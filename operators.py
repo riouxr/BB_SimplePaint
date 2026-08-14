@@ -35,11 +35,12 @@ def draw_brush_circle(operator, context):
 
     radius = operator.pixel_radius or 40.0
 
-    color = (
-        (0.2, 1.0, 0.4, 0.9)
-        if operator.valid_hit
-        else (1.0, 0.3, 0.2, 0.9)
-    )
+    if getattr(operator, "erase", False):
+        color = (1.0, 0.15, 0.15, 0.9)
+    elif operator.valid_hit:
+        color = (0.2, 1.0, 0.4, 0.9)
+    else:
+        color = (1.0, 0.6, 0.1, 0.9)
 
     coords = build_circle_coords(
         operator.mouse_pos, radius
@@ -120,6 +121,15 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
         "Right Mouse or Esc to exit"
     )
 
+    erase: bpy.props.BoolProperty(
+        name="Erase",
+        description=(
+            "Remove placed characters under the brush instead "
+            "of stamping new ones"
+        ),
+        default=False
+    )
+
     def __init__(self):
 
         self.mouse_pos = None
@@ -142,56 +152,58 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
 
     def invoke(self, context, event):
 
-        self.source_collection = utils.get_source_collection(
-            context
-        )
-
-        if self.source_collection is None:
-
-            self.report(
-                {'ERROR'},
-                "Collection "
-                f"'{context.scene.peoplelib_collection_name}' "
-                "not found"
-            )
-
-            return {'CANCELLED'}
-
-        if not utils.get_character_roots(self.source_collection):
-
-            self.report(
-                {'ERROR'},
-                "PeopleLib collection has no characters"
-            )
-
-            return {'CANCELLED'}
-
-        if (
-            context.scene.peoplelib_paint_mode == 'SURFACE'
-            and context.scene.peoplelib_surface is None
-        ):
-
-            self.report(
-                {'ERROR'},
-                "Choose a Base Mesh, or switch Paint On "
-                "to 'Any Surface'"
-            )
-
-            return {'CANCELLED'}
-
         self.placed_collection = utils.get_placed_collection(
             context
         )
 
-        spacing = utils.density_to_spacing(
-            context.scene.peoplelib_brush_size,
-            context.scene.peoplelib_density
+        self.source_collection = utils.get_source_collection(
+            context
         )
 
-        self.spatial_hash = utils.build_spatial_hash(
-            self.placed_collection,
-            max(spacing, 0.2)
-        )
+        if not self.erase:
+
+            if self.source_collection is None:
+
+                self.report(
+                    {'ERROR'},
+                    "Collection "
+                    f"'{context.scene.peoplelib_collection_name}' "
+                    "not found"
+                )
+
+                return {'CANCELLED'}
+
+            if not utils.get_character_roots(self.source_collection):
+
+                self.report(
+                    {'ERROR'},
+                    "PeopleLib collection has no characters"
+                )
+
+                return {'CANCELLED'}
+
+            if (
+                context.scene.peoplelib_paint_mode == 'SURFACE'
+                and context.scene.peoplelib_surface is None
+            ):
+
+                self.report(
+                    {'ERROR'},
+                    "Choose a Base Mesh, or switch Paint On "
+                    "to 'Any Surface'"
+                )
+
+                return {'CANCELLED'}
+
+            spacing = utils.density_to_spacing(
+                context.scene.peoplelib_brush_size,
+                context.scene.peoplelib_density
+            )
+
+            self.spatial_hash = utils.build_spatial_hash(
+                self.placed_collection,
+                max(spacing, 0.2)
+            )
 
         self.mouse_pos = (
             event.mouse_region_x,
@@ -228,13 +240,13 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
                 event.mouse_region_y,
             )
 
-            self.update_hit_preview(context)
+            self.update_preview(context)
 
         elif event.type == 'LEFTMOUSE':
 
             if event.value == 'PRESS':
                 self.painting = True
-                self.try_stamp(context)
+                self.do_action(context)
 
             elif event.value == 'RELEASE':
                 self.painting = False
@@ -242,7 +254,7 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
         elif event.type == 'TIMER':
 
             if self.painting:
-                self.try_stamp(context)
+                self.do_action(context)
 
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
 
@@ -257,7 +269,7 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
                 context.scene.peoplelib_brush_size * factor
             )
 
-            self.update_hit_preview(context)
+            self.update_preview(context)
 
         elif event.type in {'RIGHTMOUSE', 'ESC'}:
 
@@ -266,6 +278,62 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
             return {'FINISHED'}
 
         return {'RUNNING_MODAL'}
+
+    def update_preview(self, context):
+
+        if self.erase:
+            self.update_erase_preview(context)
+        else:
+            self.update_hit_preview(context)
+
+    def do_action(self, context):
+
+        if self.erase:
+            self.try_erase(context)
+        else:
+            self.try_stamp(context)
+
+    def update_erase_preview(self, context):
+
+        hit = utils.raycast(context, self.mouse_pos)
+
+        self.valid_hit = hit is not None
+
+        if hit is not None:
+
+            self.pixel_radius = utils.world_radius_to_pixels(
+                context,
+                hit[0],
+                context.scene.peoplelib_brush_size
+            )
+
+    def try_erase(self, context):
+
+        radius = self.pixel_radius or 40.0
+        radius_sq = radius * radius
+
+        to_delete = []
+
+        for obj in list(self.placed_collection.objects):
+
+            if obj.parent is not None:
+                continue
+
+            screen_pos = utils.location_to_screen(
+                context, obj.matrix_world.translation
+            )
+
+            if screen_pos is None:
+                continue
+
+            dx = screen_pos.x - self.mouse_pos[0]
+            dy = screen_pos.y - self.mouse_pos[1]
+
+            if dx * dx + dy * dy <= radius_sq:
+                to_delete.append(obj)
+
+        for obj in to_delete:
+            utils.delete_hierarchy(obj)
 
     def update_hit_preview(self, context):
 

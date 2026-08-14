@@ -105,11 +105,23 @@ class PEOPLELIB_PT_panel(bpy.types.Panel):
             text="Density"
         )
 
-        box.operator(
+        row = box.row(align=True)
+
+        paint_op = row.operator(
             "peoplelib.paint",
             text="Paint",
             icon='BRUSH_DATA'
         )
+
+        paint_op.erase = False
+
+        erase_op = row.operator(
+            "peoplelib.paint",
+            text="Erase",
+            icon='TRASH'
+        )
+
+        erase_op.erase = True
 
         # -------------------------------------------------
         # PLACE ONE

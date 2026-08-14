@@ -16,6 +16,7 @@ Painted characters are **linked duplicates**: they share mesh/armature data with
 - **Paint** — hold Left Mouse and drag to stamp a stream of characters onto the surface under the brush. Release to stop, click again to start a new stroke, Right Mouse/Esc to exit. Scroll the mouse wheel mid-stroke to change brush size.
   - **Size** — brush radius in world units.
   - **Density** — how tightly packed stamps are within the brush; also keeps a minimum spacing so characters don't stack on top of each other.
+- **Erase** — same brush, hold Left Mouse and drag to remove any placed characters under the cursor (works regardless of Paint On mode — it checks the brush circle on screen, not the surface). Right Mouse/Esc to exit.
 - **Place One Character** — click and hold to drop a single character, drag while held to slide it around (snapped to whatever surface is under the cursor), release to commit, Esc/Right Mouse to cancel.
 - Every stamp picks a random character from `PeopleLib`, but never repeats one of the last 20 distinct picks (or fewer, if the library is smaller) — no two identical characters end up next to each other.
 - Placed characters always keep their original upright orientation (no tilting to match slopes) — only their position snaps to the surface.

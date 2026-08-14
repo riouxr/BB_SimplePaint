@@ -230,6 +230,19 @@ def raycast(context, mouse_coord, target_object=None, exclude=None):
     return location, normal, hit_obj
 
 
+def location_to_screen(context, world_point):
+
+    region = context.region
+    rv3d = context.region_data
+
+    if region is None or rv3d is None:
+        return None
+
+    return view3d_utils.location_3d_to_region_2d(
+        region, rv3d, world_point
+    )
+
+
 def world_radius_to_pixels(context, world_point, world_radius):
 
     region = context.region
