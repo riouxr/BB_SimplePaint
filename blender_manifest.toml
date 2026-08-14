@@ -1,0 +1,30 @@
+schema_version = "1.0.0"
+
+id = "bb_peoplelib"
+name = "BB PeopleLib"
+version = "1.0.0"
+tagline = "Paint crowd characters onto any surface from a PeopleLib collection"
+type = "add-on"
+
+maintainer = "Blender Bob & Claude"
+website = "https://github.com/riouxr/BB_PeopleLib"
+tags = ["Animation", "Object", "Rigging"]
+
+blender_version_min = "4.5.0"
+
+# License conforming to https://spdx.org/licenses/ (use "SPDX:" prefix)
+# https://docs.blender.org/manual/en/dev/advanced/extensions/licenses.html
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
+copyright = [
+  "2026 Blender Bob",
+  "2026 Claude",
+]
+
+[build]
+paths_exclude_pattern = [
+  "/.git/",
+  "__pycache__/",
+  ".*",
+]
