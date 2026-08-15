@@ -866,7 +866,8 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
 
             total_placed += self.flood_object(
                 context, obj, source_collection,
-                placed_collection, spatial_hash, spacing, density
+                placed_collection, spatial_hash, spacing,
+                density, brush_size
             )
 
         self.report(
@@ -878,7 +879,8 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
 
     def flood_object(
         self, context, obj, source_collection,
-        placed_collection, spatial_hash, spacing, density
+        placed_collection, spatial_hash, spacing,
+        density, brush_size
     ):
 
         triangles = utils.get_evaluated_triangles(context, obj)
@@ -891,11 +893,19 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
         if weighted.total_area <= 0.0:
             return 0
 
-        # spacing alone only controls how tightly-packed neighbors
-        # are; density must also scale the total item count, or low
-        # density still fully tiles the surface (just with wider
-        # gaps) instead of scattering only a few items
-        full_pack_count = weighted.total_area / (spacing * spacing)
+        # Target count scales linearly with density against a count
+        # reference tied to brush size (roughly "one item per
+        # brush-size-square patch" at max density), NOT against the
+        # much tighter minimum spacing -- that spacing/density
+        # formula is calibrated for Paint's per-stroke brush and
+        # explodes quadratically over a whole surface, giving a
+        # slider that barely does anything below ~90% and then jumps
+        # by 60x+ in the last stretch. Overlap-avoidance still uses
+        # the finer `spacing` value via spatial_hash below, just not
+        # for how many items we're aiming for.
+        full_pack_count = (
+            weighted.total_area / (brush_size * brush_size)
+        )
 
         target_count = max(
             1, int(full_pack_count * density)
