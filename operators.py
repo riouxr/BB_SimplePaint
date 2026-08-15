@@ -344,6 +344,15 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
             if event.value == 'PRESS':
 
+                # The dots have done their job once real items start
+                # landing, and leaving them on just clutters the
+                # surface being painted.
+                if context.scene.simplepaint_show_preview:
+                    context.scene.simplepaint_show_preview = False
+
+                # Don't let a later D release resurrect it.
+                self.preview_was_on = False
+
                 # Pick up anything erased or deleted since the last
                 # stroke before laying down new items.
                 self.rebuild_hash(context)

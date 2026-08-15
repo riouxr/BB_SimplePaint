@@ -163,46 +163,54 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
                 toggle=True
             )
 
-        rot_sync = scene.simplepaint_rot_sync
+        enabled_axes = [
+            axis
+            for axis in AXES
+            if getattr(scene, f"simplepaint_random_rot_{axis}")
+        ]
 
-        for axis in AXES:
+        if scene.simplepaint_rot_sync:
 
-            enabled = getattr(
-                scene, f"simplepaint_random_rot_{axis}"
-            )
+            if enabled_axes:
 
-            if rot_sync:
+                # Name the axes the shared range actually drives --
+                # labelling it "All" when only Y and Z are on reads
+                # like the X axis is being randomized too.
+                row = box.row(align=True)
 
-                # One shared range drives every enabled axis.
-                if axis != 'x':
-                    continue
+                row.label(
+                    text=" ".join(
+                        AXIS_LABELS[axis] for axis in enabled_axes
+                    )
+                )
 
-                if not any(
-                    getattr(scene, f"simplepaint_random_rot_{a}")
-                    for a in AXES
-                ):
-                    continue
+                row.prop(
+                    scene, "simplepaint_rot_min_x", text="Min"
+                )
 
-                label = "All"
+                row.prop(
+                    scene, "simplepaint_rot_max_x", text="Max"
+                )
 
-            else:
+        else:
 
-                if not enabled:
-                    continue
+            for axis in enabled_axes:
 
-                label = AXIS_LABELS[axis]
+                row = box.row(align=True)
 
-            row = box.row(align=True)
+                row.label(text=AXIS_LABELS[axis])
 
-            row.label(text=label)
+                row.prop(
+                    scene,
+                    f"simplepaint_rot_min_{axis}",
+                    text="Min"
+                )
 
-            row.prop(
-                scene, f"simplepaint_rot_min_{axis}", text="Min"
-            )
-
-            row.prop(
-                scene, f"simplepaint_rot_max_{axis}", text="Max"
-            )
+                row.prop(
+                    scene,
+                    f"simplepaint_rot_max_{axis}",
+                    text="Max"
+                )
 
         # ---- random scale ----
 

@@ -2,7 +2,7 @@ schema_version = "1.0.0"
 
 id = "bb_simplepaint"
 name = "BB Simple Paint"
-version = "2.3.1"
+version = "2.3.2"
 tagline = "Paint or place any object as instances onto any surface"
 type = "add-on"
 
