@@ -15,8 +15,8 @@ Placed items are **linked duplicates**: they share mesh/data with their source (
 - **Paint On** — restrict painting to the currently **selected mesh object(s)** in the scene ("Selected Surface(s)" — select one or more objects before painting), or let the brush hit anything in the scene ("Any Surface").
 - **Orientation and Scale**
   - **Align** — how placed items are oriented: tilt to match the **Surface** normal, always keep the item's up axis fixed to world **X**, **Y**, or **Z** regardless of surface tilt, or **Object** — point a chosen local axis of the item at a target object (pick it with the field's built-in eyedropper; choose which axis with the Axis dropdown).
-  - **Random Rotation** — independent X/Y/Z toggles, each with its own Min/Max angle range, applied on top of the alignment above. **Sync** shares one range across every enabled axis.
-  - **Random Scale** — Min/Max per axis. **Sync** (default) uses one range for all three axes so items stay proportional; turn it off to stretch each axis independently.
+  - **Random Rotation** — independent X/Y/Z toggles, each with its own Min/Max angle range, applied on top of the alignment above. **Sync** shares one range across every enabled axis, and editing it writes through to all of them.
+  - **Random Scale** — Min/Max per axis. **Sync** (default) uses one range for all three axes so items stay proportional and edits write through to every axis; turn it off to stretch each axis independently.
 - **Spacing** — the minimum distance between items, in **world units**. This is the single density control and it is absolute, so painting a patch and flooding the whole surface land items at exactly the same density. Spacing 1.0 gives the same result on a 5 m plane and a 50 m plane.
 - **Brush Size** — how large an *area* a paint stroke covers. It has **no effect on density** — a bigger brush covers more ground per stroke at the same spacing, it doesn't pack items tighter or looser.
 - **Preview Spacing** — toggle a dot overlay on the selected surface(s) showing exactly where items would land at the current Spacing, so you can gauge density before committing. The dots match what Flood would place one-for-one. **Dot Size** sets their on-screen size in pixels, so they stay equally readable however far you are from the surface.
@@ -24,11 +24,12 @@ Placed items are **linked duplicates**: they share mesh/data with their source (
   - **E** — toggle Paint/Erase without leaving the tool.
   - **F**, then move the mouse left/right, then click/Enter to confirm (or Esc/Right Mouse to cancel just the resize) — drag-resize the brush, same as Blender's sculpt/paint brushes. Mouse wheel also resizes.
   - **D** + mouse wheel — adjust Spacing, with the dot preview shown while D is held and restored to its previous state on release.
+  - **Ctrl+Z / Ctrl+Shift+Z** — undo/redo without leaving the tool. Each stroke is its own undo step.
   - **Shift+F** — Flood the selected surface(s) without leaving the tool.
   - **Tab** — switch straight to Place One without exiting.
 - **Erase** — same brush and hotkeys as Paint, but removes any placed items under the cursor instead (works regardless of Paint On mode — it checks the brush circle on screen, not the surface).
 - **Flood** — one click covers the entire selected surface object(s) with items at the current Spacing. Only available when Paint On is "Selected Surface(s)".
-- **Place One** — click and hold to drop a single item, drag while held to slide it around (snapped to whatever surface is under the cursor, respecting the same Align/Random Rotation/Random Scale settings, rolled once per item and kept while dragging), release to commit. Repeat to place more without reactivating the tool. **Tab** switches straight to Paint. Esc/Right Mouse exits (cancels only the item currently mid-drag, if any, keeping everything already dropped).
+- **Place One** — click and hold to drop a single item, drag while held to slide it around (snapped to whatever surface is under the cursor, respecting the same Align/Random Rotation/Random Scale settings, rolled once per item and kept while dragging), release to commit. Repeat to place more without reactivating the tool. Each drop is its own undo step, so **Ctrl+Z** removes one item at a time. **Tab** switches straight to Paint. Esc/Right Mouse exits (cancels only the item currently mid-drag, if any, keeping everything already dropped).
 - Every stamp/placement picks a random item from the source collection, but never repeats one of the last 20 distinct picks (or fewer, if the collection is smaller) — no two identical items end up next to each other.
 
 ## Install

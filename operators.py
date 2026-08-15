@@ -5,7 +5,7 @@ import math
 from mathutils import Vector
 from gpu_extras.batch import batch_for_shader
 
-from . import utils
+from . import preview, utils
 
 
 # =========================================================
@@ -148,13 +148,18 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
     bl_idname = "simplepaint.paint"
     bl_label = "Paint Items"
-    bl_options = {'REGISTER', 'UNDO'}
+
+    # No 'UNDO': a modal tool that runs for many strokes would push a
+    # single step covering everything. Each stroke pushes its own undo
+    # step instead (see push_undo), so Ctrl+Z steps back one stroke at
+    # a time both during the tool and after exiting it.
+    bl_options = {'REGISTER'}
 
     bl_description = (
         "Paint items from the source collection onto a surface. "
         "Hold Left Mouse to paint, release to stop, E to toggle "
-        "Erase, F to resize the brush, Tab to switch to Place "
-        "One, Right Mouse or Esc to exit"
+        "Erase, F to resize the brush, Ctrl+Z to undo a stroke, "
+        "Tab to switch to Place One, Right Mouse or Esc to exit"
     )
 
     erase: bpy.props.BoolProperty(
@@ -193,6 +198,7 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
         self.spacing_adjust = False
         self.preview_was_on = False
+        self.stroke_changed = False
 
         self.placed_collection = utils.get_placed_collection(
             context
@@ -250,6 +256,44 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
             context.scene.simplepaint_spacing
         )
 
+    def push_undo(self, context, label):
+
+        if not self.stroke_changed:
+            return
+
+        self.stroke_changed = False
+
+        bpy.ops.ed.undo_push(message=label)
+
+    def run_undo(self, context, redo=False):
+
+        self.painting = False
+        self.stroke_changed = False
+
+        try:
+
+            if redo:
+                bpy.ops.ed.redo()
+            else:
+                bpy.ops.ed.undo()
+
+        except RuntimeError:
+            return
+
+        # Undo swaps datablocks out, so every reference held across
+        # the call has to be looked up again rather than reused.
+        self.placed_collection = utils.get_placed_collection(
+            context
+        )
+
+        self.source_collection = utils.get_source_collection(
+            context
+        )
+
+        self.rebuild_hash(context)
+
+        preview.clear_cache()
+
     def update_header(self, context):
 
         mode = "Erase" if self.erase else "Paint"
@@ -281,6 +325,12 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
         if self.resizing:
             return self.modal_resize(context, event)
 
+        if event.type == 'Z' and event.ctrl and event.value == 'PRESS':
+
+            self.run_undo(context, redo=event.shift)
+
+            return {'RUNNING_MODAL'}
+
         if event.type == 'MOUSEMOVE':
 
             self.mouse_pos = (
@@ -302,7 +352,13 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
                 self.do_action(context)
 
             elif event.value == 'RELEASE':
+
                 self.painting = False
+
+                self.push_undo(
+                    context,
+                    "Erase Items" if self.erase else "Paint Items"
+                )
 
         elif event.type == 'TIMER':
 
@@ -518,6 +574,8 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
         for obj in to_delete:
             utils.delete_hierarchy(obj)
 
+        self.stroke_changed = True
+
         # Free the erased area back up for painting.
         self.rebuild_hash(context)
 
@@ -629,6 +687,8 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
         self.spatial_hash.add(location)
 
+        self.stroke_changed = True
+
     def finish(self, context):
 
         if self.timer is not None:
@@ -662,12 +722,16 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
 
     bl_idname = "simplepaint.place_one"
     bl_label = "Place One"
-    bl_options = {'REGISTER', 'UNDO'}
+
+    # Same reasoning as the paint tool: each drop pushes its own undo
+    # step so Ctrl+Z removes one item at a time.
+    bl_options = {'REGISTER'}
 
     bl_description = (
         "Click and hold to place an item, drag to move it "
         "while held, release to drop it. Repeat to place more, "
-        "Tab to switch to Paint, Right Mouse or Esc to exit"
+        "Ctrl+Z to undo a placement, Tab to switch to Paint, "
+        "Right Mouse or Esc to exit"
     )
 
     @classmethod
@@ -735,6 +799,38 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
 
         context.area.tag_redraw()
 
+        if event.type == 'Z' and event.ctrl and event.value == 'PRESS':
+
+            # Undoing mid-drag would leave a dangling reference to an
+            # item the undo may have just removed.
+            if self.state == 'DRAGGING' and self.new_root is not None:
+
+                utils.delete_hierarchy(self.new_root)
+                self.new_root = None
+                self.state = 'WAITING'
+
+            try:
+
+                if event.shift:
+                    bpy.ops.ed.redo()
+                else:
+                    bpy.ops.ed.undo()
+
+            except RuntimeError:
+                return {'RUNNING_MODAL'}
+
+            self.placed_collection = utils.get_placed_collection(
+                context
+            )
+
+            self.source_collection = utils.get_source_collection(
+                context
+            )
+
+            preview.clear_cache()
+
+            return {'RUNNING_MODAL'}
+
         if event.type == 'MOUSEMOVE':
 
             self.mouse_pos = (
@@ -782,6 +878,8 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
                 self.placed_count += 1
                 self.new_root = None
                 self.state = 'WAITING'
+
+                bpy.ops.ed.undo_push(message="Place Item")
 
         elif event.type == 'TAB' and event.value == 'PRESS':
 

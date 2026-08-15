@@ -20,6 +20,76 @@ AXES = ('x', 'y', 'z')
 ROT_LABELS = {'x': "X", 'y': "Y", 'z': "Z"}
 
 
+# Guards the write-back below: assigning to the sibling axes fires
+# their own update callbacks, which would otherwise recurse.
+_syncing = False
+
+
+def make_sync_update(base, sync_prop, axis):
+
+    def update(self, context):
+
+        global _syncing
+
+        if _syncing:
+            return
+
+        if not getattr(self, sync_prop, False):
+            return
+
+        value = getattr(self, base + axis)
+
+        _syncing = True
+
+        try:
+
+            for other in AXES:
+
+                if other == axis:
+                    continue
+
+                if getattr(self, base + other) != value:
+                    setattr(self, base + other, value)
+
+        finally:
+            _syncing = False
+
+    return update
+
+
+def make_sync_toggle(bases, sync_prop):
+
+    def update(self, context):
+
+        global _syncing
+
+        if _syncing:
+            return
+
+        if not getattr(self, sync_prop, False):
+            return
+
+        # Turning Sync on unifies the axes immediately, so what the
+        # single shared field shows is what every axis actually holds.
+        _syncing = True
+
+        try:
+
+            for base in bases:
+
+                value = getattr(self, base + 'x')
+
+                for other in ('y', 'z'):
+
+                    if getattr(self, base + other) != value:
+                        setattr(self, base + other, value)
+
+        finally:
+            _syncing = False
+
+    return update
+
+
 def register():
 
     bpy.types.Scene.simplepaint_collection = (
@@ -199,7 +269,11 @@ def register():
                 "Use one Min/Max range for every enabled "
                 "rotation axis"
             ),
-            default=True
+            default=True,
+            update=make_sync_toggle(
+                ("simplepaint_rot_min_", "simplepaint_rot_max_"),
+                "simplepaint_rot_sync"
+            )
         )
     )
 
@@ -229,7 +303,12 @@ def register():
                 ),
                 default=0.0,
                 subtype='ANGLE',
-                unit='ROTATION'
+                unit='ROTATION',
+                update=make_sync_update(
+                    "simplepaint_rot_min_",
+                    "simplepaint_rot_sync",
+                    axis
+                )
             )
         )
 
@@ -244,7 +323,12 @@ def register():
                 ),
                 default=math.radians(360.0),
                 subtype='ANGLE',
-                unit='ROTATION'
+                unit='ROTATION',
+                update=make_sync_update(
+                    "simplepaint_rot_max_",
+                    "simplepaint_rot_sync",
+                    axis
+                )
             )
         )
 
@@ -259,7 +343,14 @@ def register():
                 "Scale every axis by the same random factor, "
                 "keeping items proportional"
             ),
-            default=True
+            default=True,
+            update=make_sync_toggle(
+                (
+                    "simplepaint_scale_min_",
+                    "simplepaint_scale_max_",
+                ),
+                "simplepaint_scale_sync"
+            )
         )
     )
 
@@ -276,7 +367,12 @@ def register():
                 ),
                 default=1.0,
                 min=0.001,
-                soft_max=10.0
+                soft_max=10.0,
+                update=make_sync_update(
+                    "simplepaint_scale_min_",
+                    "simplepaint_scale_sync",
+                    axis
+                )
             )
         )
 
@@ -291,7 +387,12 @@ def register():
                 ),
                 default=1.0,
                 min=0.001,
-                soft_max=10.0
+                soft_max=10.0,
+                update=make_sync_update(
+                    "simplepaint_scale_max_",
+                    "simplepaint_scale_sync",
+                    axis
+                )
             )
         )
 
