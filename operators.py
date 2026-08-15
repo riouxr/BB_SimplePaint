@@ -2,6 +2,7 @@ import bpy
 import gpu
 import math
 
+from mathutils import Vector
 from gpu_extras.batch import batch_for_shader
 
 from . import utils
@@ -104,9 +105,7 @@ def validate_prerequisites(operator, context):
 
         operator.report(
             {'ERROR'},
-            "Collection "
-            f"'{context.scene.simplepaint_collection_name}' "
-            "not found"
+            "Pick a source Collection in the Simple Paint panel"
         )
 
         return None
@@ -192,6 +191,9 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
         self.resize_start_size = None
         self.resize_start_pixel_radius = None
 
+        self.spacing_adjust = False
+        self.preview_was_on = False
+
         self.placed_collection = utils.get_placed_collection(
             context
         )
@@ -209,12 +211,7 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
             if self.source_collection is None:
                 return {'CANCELLED'}
 
-        spacing = context.scene.simplepaint_spacing
-
-        self.spatial_hash = utils.build_spatial_hash(
-            self.placed_collection,
-            spacing
-        )
+        self.rebuild_hash(context)
 
         self.mouse_pos = (
             event.mouse_region_x,
@@ -242,16 +239,38 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
         return {'RUNNING_MODAL'}
 
+    def rebuild_hash(self, context):
+
+        # Rebuilt from the live collection rather than mutated, so
+        # erasing items (or deleting them in the outliner) frees that
+        # area up to be painted again instead of leaving stale points
+        # that keep rejecting every new sample there.
+        self.spatial_hash = utils.build_spatial_hash(
+            self.placed_collection,
+            context.scene.simplepaint_spacing
+        )
+
     def update_header(self, context):
 
         mode = "Erase" if self.erase else "Paint"
 
+        if self.spacing_adjust:
+
+            spacing = context.scene.simplepaint_spacing
+
+            context.area.header_text_set(
+                f"BB Simple Paint [Spacing]  |  Wheel: Spacing "
+                f"= {spacing:.3f}  |  Release D: back to {mode}"
+            )
+
+            return
+
         context.area.header_text_set(
-            f"Simple Paint [{mode}]  |  LMB: "
+            f"BB Simple Paint [{mode}]  |  LMB: "
             f"{'Erase' if self.erase else 'Paint'}  "
-            "|  E: Toggle Erase  |  F: Resize Brush "
-            "(drag, click/Enter to confirm)  |  "
-            "Wheel: Resize  |  Tab: Place One  |  "
+            "|  E: Toggle Erase  |  F: Resize Brush  |  "
+            "D+Wheel: Spacing  |  Shift+F: Flood  |  "
+            "Wheel: Brush Size  |  Tab: Place One  |  "
             "RMB/Esc: Exit"
         )
 
@@ -274,6 +293,11 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
         elif event.type == 'LEFTMOUSE':
 
             if event.value == 'PRESS':
+
+                # Pick up anything erased or deleted since the last
+                # stroke before laying down new items.
+                self.rebuild_hash(context)
+
                 self.painting = True
                 self.do_action(context)
 
@@ -293,12 +317,49 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
                 else 1.0 / 1.1
             )
 
-            context.scene.simplepaint_brush_size = max(
-                0.01,
-                context.scene.simplepaint_brush_size * factor
-            )
+            if self.spacing_adjust:
+
+                context.scene.simplepaint_spacing = max(
+                    0.001,
+                    context.scene.simplepaint_spacing * factor
+                )
+
+                self.rebuild_hash(context)
+                self.update_header(context)
+
+            else:
+
+                context.scene.simplepaint_brush_size = max(
+                    0.01,
+                    context.scene.simplepaint_brush_size * factor
+                )
 
             self.update_preview(context)
+
+        elif event.type == 'D':
+
+            if event.value == 'PRESS' and not self.spacing_adjust:
+
+                self.spacing_adjust = True
+                self.painting = False
+
+                self.preview_was_on = (
+                    context.scene.simplepaint_show_preview
+                )
+
+                context.scene.simplepaint_show_preview = True
+
+                self.update_header(context)
+
+            elif event.value == 'RELEASE' and self.spacing_adjust:
+
+                self.spacing_adjust = False
+
+                context.scene.simplepaint_show_preview = (
+                    self.preview_was_on
+                )
+
+                self.update_header(context)
 
         elif event.type == 'E' and event.value == 'PRESS':
 
@@ -309,7 +370,17 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
         elif event.type == 'F' and event.value == 'PRESS':
 
-            self.start_resize(context)
+            if event.shift:
+
+                bpy.ops.simplepaint.flood()
+
+                # Flood just added a pile of items; resync so the
+                # brush respects them.
+                self.rebuild_hash(context)
+
+            else:
+
+                self.start_resize(context)
 
         elif event.type == 'TAB' and event.value == 'PRESS':
 
@@ -441,8 +512,14 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
             if dx * dx + dy * dy <= radius_sq:
                 to_delete.append(obj)
 
+        if not to_delete:
+            return
+
         for obj in to_delete:
             utils.delete_hierarchy(obj)
+
+        # Free the erased area back up for painting.
+        self.rebuild_hash(context)
 
     def update_hit_preview(self, context):
 
@@ -543,11 +620,11 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
         )
 
         random_quat = utils.roll_random_quat(context)
-        scale_factor = utils.roll_scale_factor(context)
+        scale_mult = utils.roll_scale_mult(context)
 
         new_root.matrix_world = utils.item_transform(
             context, source_root, location, normal,
-            random_quat, scale_factor
+            random_quat, scale_mult
         )
 
         self.spatial_hash.add(location)
@@ -615,7 +692,7 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
 
         self.item_source_root = None
         self.item_random_quat = None
-        self.item_scale_factor = 1.0
+        self.item_scale_mult = Vector((1.0, 1.0, 1.0))
 
         self.source_collection = validate_prerequisites(
             self, context
@@ -647,9 +724,9 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
         context.area.tag_redraw()
 
         context.area.header_text_set(
-            "Simple Paint [Place One]  |  LMB: place & drag, "
+            "BB Simple Paint [Place One]  |  LMB: place & drag, "
             "release to drop, repeat for more  |  "
-            "Tab: Paint  |  RMB/Esc: Exit"
+            "Shift+F: Flood  |  Tab: Paint  |  RMB/Esc: Exit"
         )
 
         return {'RUNNING_MODAL'}
@@ -687,7 +764,7 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
                             location,
                             normal,
                             self.item_random_quat,
-                            self.item_scale_factor
+                            self.item_scale_mult
                         )
                     )
 
@@ -784,7 +861,7 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
 
         self.item_source_root = source_root
         self.item_random_quat = utils.roll_random_quat(context)
-        self.item_scale_factor = utils.roll_scale_factor(context)
+        self.item_scale_mult = utils.roll_scale_mult(context)
 
         self.new_root = utils.duplicate_item(
             context, source_root, self.placed_collection
@@ -792,7 +869,7 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
 
         self.new_root.matrix_world = utils.item_transform(
             context, source_root, location, normal,
-            self.item_random_quat, self.item_scale_factor
+            self.item_random_quat, self.item_scale_mult
         )
 
         self.state = 'DRAGGING'
@@ -908,11 +985,11 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
             )
 
             random_quat = utils.roll_random_quat(context)
-            scale_factor = utils.roll_scale_factor(context)
+            scale_mult = utils.roll_scale_mult(context)
 
             new_root.matrix_world = utils.item_transform(
                 context, source_root, point, normal,
-                random_quat, scale_factor
+                random_quat, scale_mult
             )
 
             placed += 1

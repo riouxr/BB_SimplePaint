@@ -11,7 +11,31 @@ from . import utils
 MAX_PREVIEW_POINTS = 4000
 
 DOT_COLOR = (0.25, 0.9, 1.0, 0.9)
-DOT_SIZE = 4.0
+
+# 'UNIFORM_COLOR' ignores point size, so POINTS batches drawn with it
+# come out as unreadable single pixels. The POINT_* variants honour
+# gpu.state.point_size_set.
+POINT_SHADER_NAMES = ('POINT_UNIFORM_COLOR', 'UNIFORM_COLOR')
+
+_point_shader = None
+
+
+def get_point_shader():
+
+    global _point_shader
+
+    if _point_shader is not None:
+        return _point_shader
+
+    for name in POINT_SHADER_NAMES:
+
+        try:
+            _point_shader = gpu.shader.from_builtin(name)
+            return _point_shader
+        except Exception:
+            continue
+
+    return None
 
 
 _draw_handle = None
@@ -182,12 +206,20 @@ def draw_callback():
     if not coords:
         return
 
-    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    shader = get_point_shader()
+
+    if shader is None:
+        return
+
     batch = batch_for_shader(shader, 'POINTS', {"pos": coords})
+
+    # Size is in pixels, so dots stay legible at any distance from
+    # the surface rather than shrinking with perspective.
+    dot_size = float(scene.simplepaint_preview_dot_size)
 
     gpu.state.blend_set('ALPHA')
     gpu.state.depth_test_set('LESS_EQUAL')
-    gpu.state.point_size_set(DOT_SIZE)
+    gpu.state.point_size_set(dot_size)
 
     shader.bind()
     shader.uniform_float("color", DOT_COLOR)

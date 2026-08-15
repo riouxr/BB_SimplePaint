@@ -1,4 +1,5 @@
 import bpy
+import math
 
 from . import preview
 
@@ -9,16 +10,25 @@ def refresh_preview(self, context):
     preview.tag_redraw_all(context)
 
 
+def redraw_only(self, context):
+
+    preview.tag_redraw_all(context)
+
+
+AXES = ('x', 'y', 'z')
+
+ROT_LABELS = {'x': "X", 'y': "Y", 'z': "Z"}
+
+
 def register():
 
-    bpy.types.Scene.simplepaint_collection_name = (
-        bpy.props.StringProperty(
+    bpy.types.Scene.simplepaint_collection = (
+        bpy.props.PointerProperty(
             name="Collection",
             description=(
-                "Name of the collection containing the "
-                "source items"
+                "Collection holding the source items to paint"
             ),
-            default="PaintItems"
+            type=bpy.types.Collection
         )
     )
 
@@ -39,14 +49,19 @@ def register():
                     "Paint on any surface under the cursor"
                 ),
             ),
-            default='SURFACE'
+            default='SURFACE',
+            update=refresh_preview
         )
     )
 
     bpy.types.Scene.simplepaint_brush_size = (
         bpy.props.FloatProperty(
             name="Brush Size",
-            description="Radius of the paint brush, in world units",
+            description=(
+                "How large an area a paint stroke covers, in world "
+                "units. This does not affect density -- Spacing "
+                "alone controls that"
+            ),
             default=1.0,
             min=0.01,
             soft_max=10.0,
@@ -82,6 +97,23 @@ def register():
             update=refresh_preview
         )
     )
+
+    bpy.types.Scene.simplepaint_preview_dot_size = (
+        bpy.props.IntProperty(
+            name="Dot Size",
+            description=(
+                "On-screen size of the preview dots, in pixels"
+            ),
+            default=8,
+            min=1,
+            max=32,
+            update=redraw_only
+        )
+    )
+
+    # -----------------------------------------------------
+    # ALIGN
+    # -----------------------------------------------------
 
     bpy.types.Scene.simplepaint_align_mode = (
         bpy.props.EnumProperty(
@@ -156,63 +188,134 @@ def register():
         )
     )
 
-    bpy.types.Scene.simplepaint_random_rot_x = (
+    # -----------------------------------------------------
+    # RANDOM ROTATION (per axis, min/max)
+    # -----------------------------------------------------
+
+    bpy.types.Scene.simplepaint_rot_sync = (
         bpy.props.BoolProperty(
-            name="X",
-            description="Randomize rotation around the local X axis",
-            default=False
+            name="Sync",
+            description=(
+                "Use one Min/Max range for every enabled "
+                "rotation axis"
+            ),
+            default=True
         )
     )
 
-    bpy.types.Scene.simplepaint_random_rot_y = (
+    for axis in AXES:
+
+        setattr(
+            bpy.types.Scene,
+            f"simplepaint_random_rot_{axis}",
+            bpy.props.BoolProperty(
+                name=ROT_LABELS[axis],
+                description=(
+                    "Randomize rotation around the local "
+                    f"{ROT_LABELS[axis]} axis"
+                ),
+                default=False
+            )
+        )
+
+        setattr(
+            bpy.types.Scene,
+            f"simplepaint_rot_min_{axis}",
+            bpy.props.FloatProperty(
+                name="Min",
+                description=(
+                    "Minimum random rotation around the local "
+                    f"{ROT_LABELS[axis]} axis"
+                ),
+                default=0.0,
+                subtype='ANGLE',
+                unit='ROTATION'
+            )
+        )
+
+        setattr(
+            bpy.types.Scene,
+            f"simplepaint_rot_max_{axis}",
+            bpy.props.FloatProperty(
+                name="Max",
+                description=(
+                    "Maximum random rotation around the local "
+                    f"{ROT_LABELS[axis]} axis"
+                ),
+                default=math.radians(360.0),
+                subtype='ANGLE',
+                unit='ROTATION'
+            )
+        )
+
+    # -----------------------------------------------------
+    # RANDOM SCALE (per axis, min/max)
+    # -----------------------------------------------------
+
+    bpy.types.Scene.simplepaint_scale_sync = (
         bpy.props.BoolProperty(
-            name="Y",
-            description="Randomize rotation around the local Y axis",
-            default=False
+            name="Sync",
+            description=(
+                "Scale every axis by the same random factor, "
+                "keeping items proportional"
+            ),
+            default=True
         )
     )
 
-    bpy.types.Scene.simplepaint_random_rot_z = (
-        bpy.props.BoolProperty(
-            name="Z",
-            description="Randomize rotation around the local Z axis",
-            default=False
-        )
-    )
+    for axis in AXES:
 
-    bpy.types.Scene.simplepaint_scale_min = (
-        bpy.props.FloatProperty(
-            name="Min",
-            description="Minimum random uniform scale factor",
-            default=1.0,
-            min=0.001,
-            soft_max=10.0
+        setattr(
+            bpy.types.Scene,
+            f"simplepaint_scale_min_{axis}",
+            bpy.props.FloatProperty(
+                name="Min",
+                description=(
+                    "Minimum random scale factor on the "
+                    f"{ROT_LABELS[axis]} axis"
+                ),
+                default=1.0,
+                min=0.001,
+                soft_max=10.0
+            )
         )
-    )
 
-    bpy.types.Scene.simplepaint_scale_max = (
-        bpy.props.FloatProperty(
-            name="Max",
-            description="Maximum random uniform scale factor",
-            default=1.0,
-            min=0.001,
-            soft_max=10.0
+        setattr(
+            bpy.types.Scene,
+            f"simplepaint_scale_max_{axis}",
+            bpy.props.FloatProperty(
+                name="Max",
+                description=(
+                    "Maximum random scale factor on the "
+                    f"{ROT_LABELS[axis]} axis"
+                ),
+                default=1.0,
+                min=0.001,
+                soft_max=10.0
+            )
         )
-    )
 
 
 def unregister():
 
-    del bpy.types.Scene.simplepaint_collection_name
+    del bpy.types.Scene.simplepaint_collection
     del bpy.types.Scene.simplepaint_paint_mode
     del bpy.types.Scene.simplepaint_brush_size
     del bpy.types.Scene.simplepaint_spacing
     del bpy.types.Scene.simplepaint_show_preview
+    del bpy.types.Scene.simplepaint_preview_dot_size
     del bpy.types.Scene.simplepaint_align_mode
     del bpy.types.Scene.simplepaint_orient_target
     del bpy.types.Scene.simplepaint_orient_axis
-    del bpy.types.Scene.simplepaint_random_rot_x
-    del bpy.types.Scene.simplepaint_random_rot_y
-    del bpy.types.Scene.simplepaint_random_rot_z
-    del bpy.types.Scene.simplepaint_scale_min
-    del bpy.types.Scene.simplepaint_scale_max
+    del bpy.types.Scene.simplepaint_rot_sync
+    del bpy.types.Scene.simplepaint_scale_sync
+
+    for axis in AXES:
+
+        delattr(
+            bpy.types.Scene, f"simplepaint_random_rot_{axis}"
+        )
+        delattr(bpy.types.Scene, f"simplepaint_rot_min_{axis}")
+        delattr(bpy.types.Scene, f"simplepaint_rot_max_{axis}")
+        delattr(bpy.types.Scene, f"simplepaint_scale_min_{axis}")
+        delattr(bpy.types.Scene, f"simplepaint_scale_max_{axis}")

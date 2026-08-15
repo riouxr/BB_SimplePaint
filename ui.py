@@ -3,23 +3,26 @@ import bpy
 from . import utils
 
 
+AXES = ('x', 'y', 'z')
+
+AXIS_LABELS = {'x': "X", 'y': "Y", 'z': "Z"}
+
+
 class SIMPLEPAINT_PT_panel(bpy.types.Panel):
 
-    bl_label = "Simple Paint"
+    bl_label = "BB Simple Paint"
     bl_idname = "SIMPLEPAINT_PT_panel"
 
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Animation"
+    bl_category = "Tool"
 
     def draw(self, context):
 
         layout = self.layout
         scene = context.scene
 
-        source_collection = utils.get_source_collection(
-            context
-        )
+        source_collection = utils.get_source_collection(context)
 
         # -------------------------------------------------
         # SOURCE COLLECTION
@@ -27,18 +30,16 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
 
         box = layout.box()
 
-        row = box.row()
-
-        row.prop(
+        box.prop(
             scene,
-            "simplepaint_collection_name",
+            "simplepaint_collection",
             text="Collection"
         )
 
         if source_collection is None:
 
             box.label(
-                text="Collection not found",
+                text="Pick a source collection",
                 icon='ERROR'
             )
 
@@ -77,7 +78,9 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
             targets = utils.get_surface_targets(
                 context,
                 source_collection,
-                utils.get_placed_collection(context)
+                bpy.data.collections.get(
+                    utils.PLACED_COLLECTION_NAME
+                )
             )
 
             if targets:
@@ -102,7 +105,7 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
                 )
 
         # -------------------------------------------------
-        # ALIGN / ROTATION / SCALE
+        # ORIENTATION AND SCALE
         # -------------------------------------------------
 
         layout.separator()
@@ -134,31 +137,121 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
                 text="Axis"
             )
 
+        # ---- random rotation ----
+
+        box.separator()
+
+        header = box.row(align=True)
+
+        header.label(text="Random Rotation")
+
+        header.prop(
+            scene,
+            "simplepaint_rot_sync",
+            text="Sync",
+            toggle=True
+        )
+
         row = box.row(align=True)
 
-        row.label(text="Random Rotation:")
-        row.prop(
-            scene, "simplepaint_random_rot_x",
-            text="X", toggle=True
-        )
-        row.prop(
-            scene, "simplepaint_random_rot_y",
-            text="Y", toggle=True
-        )
-        row.prop(
-            scene, "simplepaint_random_rot_z",
-            text="Z", toggle=True
+        for axis in AXES:
+
+            row.prop(
+                scene,
+                f"simplepaint_random_rot_{axis}",
+                text=AXIS_LABELS[axis],
+                toggle=True
+            )
+
+        rot_sync = scene.simplepaint_rot_sync
+
+        for axis in AXES:
+
+            enabled = getattr(
+                scene, f"simplepaint_random_rot_{axis}"
+            )
+
+            if rot_sync:
+
+                # One shared range drives every enabled axis.
+                if axis != 'x':
+                    continue
+
+                if not any(
+                    getattr(scene, f"simplepaint_random_rot_{a}")
+                    for a in AXES
+                ):
+                    continue
+
+                label = "All"
+
+            else:
+
+                if not enabled:
+                    continue
+
+                label = AXIS_LABELS[axis]
+
+            row = box.row(align=True)
+
+            row.label(text=label)
+
+            row.prop(
+                scene, f"simplepaint_rot_min_{axis}", text="Min"
+            )
+
+            row.prop(
+                scene, f"simplepaint_rot_max_{axis}", text="Max"
+            )
+
+        # ---- random scale ----
+
+        box.separator()
+
+        header = box.row(align=True)
+
+        header.label(text="Random Scale")
+
+        header.prop(
+            scene,
+            "simplepaint_scale_sync",
+            text="Sync",
+            toggle=True
         )
 
-        row = box.row(align=True)
+        if scene.simplepaint_scale_sync:
 
-        row.label(text="Random Scale:")
-        row.prop(
-            scene, "simplepaint_scale_min", text="Min"
-        )
-        row.prop(
-            scene, "simplepaint_scale_max", text="Max"
-        )
+            row = box.row(align=True)
+
+            row.label(text="All")
+
+            row.prop(
+                scene, "simplepaint_scale_min_x", text="Min"
+            )
+
+            row.prop(
+                scene, "simplepaint_scale_max_x", text="Max"
+            )
+
+        else:
+
+            for axis in AXES:
+
+                row = box.row(align=True)
+
+                row.label(text=AXIS_LABELS[axis])
+
+                row.prop(
+                    scene,
+                    f"simplepaint_scale_min_{axis}",
+                    text="Min"
+                )
+
+                row.prop(
+                    scene,
+                    f"simplepaint_scale_max_{axis}",
+                    text="Max"
+                )
 
         # -------------------------------------------------
         # BRUSH
@@ -185,17 +278,25 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
             text="Brush Size"
         )
 
-        row = box.row()
+        sub = box.column(align=True)
 
-        row.enabled = scene.simplepaint_paint_mode == 'SURFACE'
+        sub.enabled = scene.simplepaint_paint_mode == 'SURFACE'
 
-        row.prop(
+        sub.prop(
             scene,
             "simplepaint_show_preview",
             text="Preview Spacing",
             toggle=True,
             icon='SNAP_VERTEX'
         )
+
+        if scene.simplepaint_show_preview:
+
+            sub.prop(
+                scene,
+                "simplepaint_preview_dot_size",
+                text="Dot Size"
+            )
 
         row = box.row(align=True)
 

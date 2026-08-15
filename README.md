@@ -6,7 +6,7 @@ Created by Blender Bob & Claude.
 
 ## Concept
 
-Put your source objects in a collection (named `PaintItems` by default, configurable in the panel). Each item is a top-level object in that collection — a single mesh, or an object with children parented to it. `Simple Paint` panel is in `View3D > N Panel > Animation`.
+Put your source objects in a collection and pick it from the **Collection** dropdown in the panel. Each item is a top-level object in that collection — a single mesh, or an object with children parented to it. The `BB Simple Paint` panel is in `View3D > N Panel > Tool`.
 
 Placed items are **linked duplicates**: they share mesh/data with their source (light on the file), but each one is a fully independent object you can select, move, delete, or edit on its own.
 
@@ -15,14 +15,16 @@ Placed items are **linked duplicates**: they share mesh/data with their source (
 - **Paint On** — restrict painting to the currently **selected mesh object(s)** in the scene ("Selected Surface(s)" — select one or more objects before painting), or let the brush hit anything in the scene ("Any Surface").
 - **Orientation and Scale**
   - **Align** — how placed items are oriented: tilt to match the **Surface** normal, always keep the item's up axis fixed to world **X**, **Y**, or **Z** regardless of surface tilt, or **Object** — point a chosen local axis of the item at a target object (pick it with the field's built-in eyedropper; choose which axis with the Axis dropdown).
-  - **Random Rotation** — independent X/Y/Z toggles; each enabled axis gets a random spin per item, on top of the alignment above.
-  - **Random Scale** — Min/Max uniform scale factor, randomized per item.
+  - **Random Rotation** — independent X/Y/Z toggles, each with its own Min/Max angle range, applied on top of the alignment above. **Sync** shares one range across every enabled axis.
+  - **Random Scale** — Min/Max per axis. **Sync** (default) uses one range for all three axes so items stay proportional; turn it off to stretch each axis independently.
 - **Spacing** — the minimum distance between items, in **world units**. This is the single density control and it is absolute, so painting a patch and flooding the whole surface land items at exactly the same density. Spacing 1.0 gives the same result on a 5 m plane and a 50 m plane.
 - **Brush Size** — how large an *area* a paint stroke covers. It has **no effect on density** — a bigger brush covers more ground per stroke at the same spacing, it doesn't pack items tighter or looser.
-- **Preview Spacing** — toggle a dot overlay on the selected surface(s) showing exactly where items would land at the current Spacing, so you can gauge density before committing. The dots match what Flood would place one-for-one.
+- **Preview Spacing** — toggle a dot overlay on the selected surface(s) showing exactly where items would land at the current Spacing, so you can gauge density before committing. The dots match what Flood would place one-for-one. **Dot Size** sets their on-screen size in pixels, so they stay equally readable however far you are from the surface.
 - **Paint** — hold Left Mouse and drag to stamp a stream of items onto the surface under the brush. Release to stop, click again to start a new stroke, Right Mouse/Esc to exit.
   - **E** — toggle Paint/Erase without leaving the tool.
   - **F**, then move the mouse left/right, then click/Enter to confirm (or Esc/Right Mouse to cancel just the resize) — drag-resize the brush, same as Blender's sculpt/paint brushes. Mouse wheel also resizes.
+  - **D** + mouse wheel — adjust Spacing, with the dot preview shown while D is held and restored to its previous state on release.
+  - **Shift+F** — Flood the selected surface(s) without leaving the tool.
   - **Tab** — switch straight to Place One without exiting.
 - **Erase** — same brush and hotkeys as Paint, but removes any placed items under the cursor instead (works regardless of Paint On mode — it checks the brush circle on screen, not the surface).
 - **Flood** — one click covers the entire selected surface object(s) with items at the current Spacing. Only available when Paint On is "Selected Surface(s)".

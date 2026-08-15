@@ -20,9 +20,7 @@ _pick_history = []
 
 def get_source_collection(context):
 
-    name = context.scene.simplepaint_collection_name
-
-    return bpy.data.collections.get(name)
+    return context.scene.simplepaint_collection
 
 
 def get_placed_collection(context):
@@ -364,34 +362,9 @@ def compute_align_quat(source_root, target_up, source_axis=None):
     return delta @ source_quat
 
 
-def random_axis_quat(random_x, random_y, random_z):
+def random_in_range(low, high):
 
-    quat = Quaternion()
-
-    if random_x:
-        quat = quat @ Quaternion(
-            AXIS_VECTORS['X'], random.uniform(0.0, 2.0 * math.pi)
-        )
-
-    if random_y:
-        quat = quat @ Quaternion(
-            AXIS_VECTORS['Y'], random.uniform(0.0, 2.0 * math.pi)
-        )
-
-    if random_z:
-        quat = quat @ Quaternion(
-            AXIS_VECTORS['Z'], random.uniform(0.0, 2.0 * math.pi)
-        )
-
-    return quat
-
-
-def random_scale_factor(scale_min, scale_max):
-
-    lo = min(scale_min, scale_max)
-    hi = max(scale_min, scale_max)
-
-    return random.uniform(lo, hi)
+    return random.uniform(min(low, high), max(low, high))
 
 
 def build_matrix(location, rotation_quat, scale_vec):
@@ -399,7 +372,7 @@ def build_matrix(location, rotation_quat, scale_vec):
     return Matrix.LocRotScale(location, rotation_quat, scale_vec)
 
 
-def item_transform(context, source_root, location, hit_normal, random_quat, scale_factor):
+def item_transform(context, source_root, location, hit_normal, random_quat, scale_mult):
 
     scene = context.scene
     align_mode = scene.simplepaint_align_mode
@@ -432,7 +405,13 @@ def item_transform(context, source_root, location, hit_normal, random_quat, scal
 
     final_quat = align_quat @ random_quat
 
-    scale_vec = Vector(source_root.scale) * scale_factor
+    base = source_root.scale
+
+    scale_vec = Vector((
+        base.x * scale_mult.x,
+        base.y * scale_mult.y,
+        base.z * scale_mult.z,
+    ))
 
     return build_matrix(location, final_quat, scale_vec)
 
@@ -440,22 +419,58 @@ def item_transform(context, source_root, location, hit_normal, random_quat, scal
 def roll_random_quat(context):
 
     scene = context.scene
+    sync = scene.simplepaint_rot_sync
 
-    return random_axis_quat(
-        scene.simplepaint_random_rot_x,
-        scene.simplepaint_random_rot_y,
-        scene.simplepaint_random_rot_z,
-    )
+    quat = Quaternion()
+
+    for axis in ('x', 'y', 'z'):
+
+        if not getattr(scene, f"simplepaint_random_rot_{axis}"):
+            continue
+
+        # When synced, every enabled axis draws from the X range so
+        # there is a single Min/Max pair to think about.
+        source = 'x' if sync else axis
+
+        angle = random_in_range(
+            getattr(scene, f"simplepaint_rot_min_{source}"),
+            getattr(scene, f"simplepaint_rot_max_{source}"),
+        )
+
+        quat = quat @ Quaternion(
+            AXIS_VECTORS[axis.upper()], angle
+        )
+
+    return quat
 
 
-def roll_scale_factor(context):
+def roll_scale_mult(context):
 
     scene = context.scene
 
-    return random_scale_factor(
-        scene.simplepaint_scale_min,
-        scene.simplepaint_scale_max,
-    )
+    if scene.simplepaint_scale_sync:
+
+        factor = random_in_range(
+            scene.simplepaint_scale_min_x,
+            scene.simplepaint_scale_max_x,
+        )
+
+        return Vector((factor, factor, factor))
+
+    return Vector((
+        random_in_range(
+            scene.simplepaint_scale_min_x,
+            scene.simplepaint_scale_max_x,
+        ),
+        random_in_range(
+            scene.simplepaint_scale_min_y,
+            scene.simplepaint_scale_max_y,
+        ),
+        random_in_range(
+            scene.simplepaint_scale_min_z,
+            scene.simplepaint_scale_max_z,
+        ),
+    ))
 
 
 # =========================================================
