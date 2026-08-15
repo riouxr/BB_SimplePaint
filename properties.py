@@ -21,8 +21,9 @@ def register():
             items=(
                 (
                     'SURFACE',
-                    "Selected Surface",
-                    "Only paint on the chosen base mesh"
+                    "Selected Surface(s)",
+                    "Only paint on the currently selected "
+                    "mesh object(s)"
                 ),
                 (
                     'SCENE',
@@ -31,17 +32,6 @@ def register():
                 ),
             ),
             default='SURFACE'
-        )
-    )
-
-    bpy.types.Scene.simplepaint_surface = (
-        bpy.props.PointerProperty(
-            name="Base Mesh",
-            description=(
-                "Surface object to paint on when Paint On is "
-                "'Selected Surface'"
-            ),
-            type=bpy.types.Object
         )
     )
 
@@ -102,6 +92,42 @@ def register():
                     "Always keep the item's up axis pointing "
                     "along world Z, regardless of surface tilt"
                 ),
+                (
+                    'OBJECT',
+                    "Object",
+                    "Point a chosen local axis of the item at "
+                    "a target object"
+                ),
+            ),
+            default='Z'
+        )
+    )
+
+    bpy.types.Scene.simplepaint_orient_target = (
+        bpy.props.PointerProperty(
+            name="Orient Target",
+            description=(
+                "Object that placed items point their chosen "
+                "axis toward, when Align is 'Object'"
+            ),
+            type=bpy.types.Object
+        )
+    )
+
+    bpy.types.Scene.simplepaint_orient_axis = (
+        bpy.props.EnumProperty(
+            name="Orient Axis",
+            description=(
+                "Which local axis of the item points at the "
+                "Orient Target"
+            ),
+            items=(
+                ('X', "X", "Local +X axis"),
+                ('Y', "Y", "Local +Y axis"),
+                ('Z', "Z", "Local +Z axis"),
+                ('-X', "-X", "Local -X axis"),
+                ('-Y', "-Y", "Local -Y axis"),
+                ('-Z', "-Z", "Local -Z axis"),
             ),
             default='Z'
         )
@@ -156,10 +182,11 @@ def unregister():
 
     del bpy.types.Scene.simplepaint_collection_name
     del bpy.types.Scene.simplepaint_paint_mode
-    del bpy.types.Scene.simplepaint_surface
     del bpy.types.Scene.simplepaint_brush_size
     del bpy.types.Scene.simplepaint_density
     del bpy.types.Scene.simplepaint_align_mode
+    del bpy.types.Scene.simplepaint_orient_target
+    del bpy.types.Scene.simplepaint_orient_axis
     del bpy.types.Scene.simplepaint_random_rot_x
     del bpy.types.Scene.simplepaint_random_rot_y
     del bpy.types.Scene.simplepaint_random_rot_z

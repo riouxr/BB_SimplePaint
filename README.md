@@ -12,9 +12,9 @@ Placed items are **linked duplicates**: they share mesh/data with their source (
 
 ## Features
 
-- **Paint On** — restrict painting to one chosen Base Mesh ("Selected Surface"), or let the brush hit anything in the scene ("Any Surface").
-- **Orientation**
-  - **Align** — how placed items are oriented: tilt to match the **Surface** normal, or always keep the item's up axis fixed to world **X**, **Y**, or **Z** regardless of surface tilt.
+- **Paint On** — restrict painting to the currently **selected mesh object(s)** in the scene ("Selected Surface(s)" — select one or more objects before painting), or let the brush hit anything in the scene ("Any Surface").
+- **Orientation and Scale**
+  - **Align** — how placed items are oriented: tilt to match the **Surface** normal, always keep the item's up axis fixed to world **X**, **Y**, or **Z** regardless of surface tilt, or **Object** — point a chosen local axis of the item at a target object (pick it with the field's built-in eyedropper; choose which axis with the Axis dropdown).
   - **Random Rotation** — independent X/Y/Z toggles; each enabled axis gets a random spin per item, on top of the alignment above.
   - **Random Scale** — Min/Max uniform scale factor, randomized per item.
 - **Paint** — hold Left Mouse and drag to stamp a stream of items onto the surface under the brush. Release to stop, click again to start a new stroke, Right Mouse/Esc to exit.
@@ -24,6 +24,7 @@ Placed items are **linked duplicates**: they share mesh/data with their source (
   - **F**, then move the mouse left/right, then click/Enter to confirm (or Esc/Right Mouse to cancel just the resize) — drag-resize the brush, same as Blender's sculpt/paint brushes. Mouse wheel also resizes.
   - **Tab** — switch straight to Place One without exiting.
 - **Erase** — same brush and hotkeys as Paint, but removes any placed items under the cursor instead (works regardless of Paint On mode — it checks the brush circle on screen, not the surface).
+- **Flood** — one click covers the entire selected surface object(s) with items at the current Size/Density spacing. Only available when Paint On is "Selected Surface(s)".
 - **Place One** — click and hold to drop a single item, drag while held to slide it around (snapped to whatever surface is under the cursor, respecting the same Align/Random Rotation/Random Scale settings, rolled once per item and kept while dragging), release to commit. Repeat to place more without reactivating the tool. **Tab** switches straight to Paint. Esc/Right Mouse exits (cancels only the item currently mid-drag, if any, keeping everything already dropped).
 - Every stamp/placement picks a random item from the source collection, but never repeats one of the last 20 distinct picks (or fewer, if the collection is smaller) — no two identical items end up next to each other.
 

@@ -74,11 +74,32 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
 
         if scene.simplepaint_paint_mode == 'SURFACE':
 
-            box.prop(
-                scene,
-                "simplepaint_surface",
-                text="Base Mesh"
+            targets = utils.get_surface_targets(
+                context,
+                source_collection,
+                utils.get_placed_collection(context)
             )
+
+            if targets:
+
+                names = ", ".join(
+                    obj.name for obj in targets[:3]
+                )
+
+                if len(targets) > 3:
+                    names += f" (+{len(targets) - 3})"
+
+                box.label(
+                    text=f"Selected: {names}",
+                    icon='RESTRICT_SELECT_OFF'
+                )
+
+            else:
+
+                box.label(
+                    text="Select mesh object(s) as surface",
+                    icon='ERROR'
+                )
 
         # -------------------------------------------------
         # ALIGN / ROTATION / SCALE
@@ -89,7 +110,7 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
         box = layout.box()
 
         box.label(
-            text="Orientation",
+            text="Orientation and Scale",
             icon='ORIENTATION_NORMAL'
         )
 
@@ -98,6 +119,20 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
             "simplepaint_align_mode",
             text="Align"
         )
+
+        if scene.simplepaint_align_mode == 'OBJECT':
+
+            box.prop(
+                scene,
+                "simplepaint_orient_target",
+                text="Target"
+            )
+
+            box.prop(
+                scene,
+                "simplepaint_orient_axis",
+                text="Axis"
+            )
 
         row = box.row(align=True)
 
@@ -167,6 +202,23 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
         )
 
         erase_op.erase = True
+
+        row = box.row(align=True)
+
+        row.enabled = scene.simplepaint_paint_mode == 'SURFACE'
+
+        row.operator(
+            "simplepaint.flood",
+            text="Flood",
+            icon='OUTLINER_OB_POINTCLOUD'
+        )
+
+        if scene.simplepaint_paint_mode != 'SURFACE':
+
+            box.label(
+                text="Flood needs 'Selected Surface(s)'",
+                icon='INFO'
+            )
 
         # -------------------------------------------------
         # PLACE ONE

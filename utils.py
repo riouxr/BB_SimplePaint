@@ -1,3 +1,4 @@
+import bisect
 import bpy
 import math
 import random
@@ -56,6 +57,18 @@ def is_library_object(obj, source_collection, placed_collection):
             return True
 
     return False
+
+
+def get_surface_targets(context, source_collection, placed_collection):
+
+    return [
+        obj
+        for obj in context.selected_objects
+        if obj.type == 'MESH'
+        and not is_library_object(
+            obj, source_collection, placed_collection
+        )
+    ]
 
 
 # =========================================================
@@ -123,28 +136,26 @@ def duplicate_item(context, source_root, placed_collection):
         source_root.children_recursive
     )
 
-    for obj in context.view_layer.objects:
-        obj.select_set(False)
+    id_map = {}
 
     for obj in hierarchy:
-        obj.select_set(True)
 
-    context.view_layer.objects.active = source_root
+        new_obj = obj.copy()
 
-    bpy.ops.object.duplicate(linked=True)
+        placed_collection.objects.link(new_obj)
 
-    new_root = context.view_layer.objects.active
+        id_map[obj] = new_obj
 
-    new_objects = list(context.selected_objects)
+    for original, new_obj in id_map.items():
 
-    for obj in new_objects:
+        if original.parent is not None and original.parent in id_map:
 
-        for collection in list(obj.users_collection):
-            collection.objects.unlink(obj)
+            new_obj.parent = id_map[original.parent]
+            new_obj.matrix_parent_inverse = (
+                original.matrix_parent_inverse.copy()
+            )
 
-        placed_collection.objects.link(obj)
-
-    return new_root
+    return id_map[source_root]
 
 
 def delete_hierarchy(root):
@@ -230,6 +241,39 @@ def raycast(context, mouse_coord, target_object=None, exclude=None):
     return location, normal, hit_obj
 
 
+def raycast_targets(context, mouse_coord, target_objects):
+
+    region = context.region
+    rv3d = context.region_data
+
+    if region is None or rv3d is None:
+        return None
+
+    ray_origin = view3d_utils.region_2d_to_origin_3d(
+        region, rv3d, mouse_coord
+    )
+
+    best_hit = None
+    best_dist = None
+
+    for target_object in target_objects:
+
+        hit = raycast(
+            context, mouse_coord, target_object=target_object
+        )
+
+        if hit is None:
+            continue
+
+        dist = (hit[0] - ray_origin).length
+
+        if best_dist is None or dist < best_dist:
+            best_hit = hit
+            best_dist = dist
+
+    return best_hit
+
+
 def location_to_screen(context, world_point):
 
     region = context.region
@@ -285,6 +329,9 @@ AXIS_VECTORS = {
     'X': Vector((1.0, 0.0, 0.0)),
     'Y': Vector((0.0, 1.0, 0.0)),
     'Z': Vector((0.0, 0.0, 1.0)),
+    '-X': Vector((-1.0, 0.0, 0.0)),
+    '-Y': Vector((0.0, -1.0, 0.0)),
+    '-Z': Vector((0.0, 0.0, -1.0)),
 }
 
 
@@ -296,19 +343,22 @@ def get_target_up(align_mode, hit_normal):
     return AXIS_VECTORS.get(align_mode, AXIS_VECTORS['Z']).copy()
 
 
-def compute_align_quat(source_root, target_up):
+def compute_align_quat(source_root, target_up, source_axis=None):
+
+    if source_axis is None:
+        source_axis = Vector((0.0, 0.0, 1.0))
 
     source_matrix = source_root.matrix_world.to_3x3()
-    source_up = (source_matrix @ Vector((0.0, 0.0, 1.0)))
+    source_dir = (source_matrix @ source_axis)
 
-    if source_up.length_squared < 1e-12:
-        source_up = Vector((0.0, 0.0, 1.0))
+    if source_dir.length_squared < 1e-12:
+        source_dir = Vector((0.0, 0.0, 1.0))
     else:
-        source_up.normalize()
+        source_dir.normalize()
 
     target_up = target_up.normalized()
 
-    delta = source_up.rotation_difference(target_up)
+    delta = source_dir.rotation_difference(target_up)
     source_quat = source_root.matrix_world.to_quaternion()
 
     return delta @ source_quat
@@ -351,11 +401,34 @@ def build_matrix(location, rotation_quat, scale_vec):
 
 def item_transform(context, source_root, location, hit_normal, random_quat, scale_factor):
 
-    align_mode = context.scene.simplepaint_align_mode
+    scene = context.scene
+    align_mode = scene.simplepaint_align_mode
 
-    target_up = get_target_up(align_mode, hit_normal)
+    if align_mode == 'OBJECT':
 
-    align_quat = compute_align_quat(source_root, target_up)
+        target_object = scene.simplepaint_orient_target
+        source_axis = AXIS_VECTORS.get(
+            scene.simplepaint_orient_axis, AXIS_VECTORS['Z']
+        )
+
+        if target_object is not None:
+
+            target_up = target_object.matrix_world.translation - location
+
+            if target_up.length_squared < 1e-12:
+                target_up = Vector((0.0, 0.0, 1.0))
+            else:
+                target_up.normalize()
+
+        else:
+            target_up = Vector((0.0, 0.0, 1.0))
+
+    else:
+
+        target_up = get_target_up(align_mode, hit_normal)
+        source_axis = Vector((0.0, 0.0, 1.0))
+
+    align_quat = compute_align_quat(source_root, target_up, source_axis)
 
     final_quat = align_quat @ random_quat
 
@@ -383,6 +456,93 @@ def roll_scale_factor(context):
         scene.simplepaint_scale_min,
         scene.simplepaint_scale_max,
     )
+
+
+# =========================================================
+# MESH SURFACE SAMPLING (flood fill)
+# =========================================================
+
+def triangle_area(verts):
+
+    return (
+        (verts[1] - verts[0]).cross(verts[2] - verts[0]).length
+        * 0.5
+    )
+
+
+def sample_point_in_triangle(verts):
+
+    r1 = random.random()
+    r2 = random.random()
+
+    sqrt_r1 = math.sqrt(r1)
+
+    a = 1.0 - sqrt_r1
+    b = sqrt_r1 * (1.0 - r2)
+    c = sqrt_r1 * r2
+
+    return verts[0] * a + verts[1] * b + verts[2] * c
+
+
+def get_evaluated_triangles(context, obj):
+
+    depsgraph = context.evaluated_depsgraph_get()
+    obj_eval = obj.evaluated_get(depsgraph)
+
+    mesh = obj_eval.to_mesh()
+    mesh.calc_loop_triangles()
+
+    matrix = obj_eval.matrix_world
+    normal_matrix = matrix.to_3x3()
+
+    triangles = []
+
+    for tri in mesh.loop_triangles:
+
+        verts = [
+            matrix @ mesh.vertices[i].co
+            for i in tri.vertices
+        ]
+
+        area = triangle_area(verts)
+
+        if area <= 1e-10:
+            continue
+
+        normal = (normal_matrix @ tri.normal).normalized()
+
+        triangles.append((verts, normal, area))
+
+    obj_eval.to_mesh_clear()
+
+    return triangles
+
+
+class WeightedTriangles:
+
+    def __init__(self, triangles):
+
+        self.triangles = triangles
+
+        self.cumulative = []
+        running = 0.0
+
+        for verts, normal, area in triangles:
+            running += area
+            self.cumulative.append(running)
+
+        self.total_area = running
+
+    def pick(self):
+
+        if not self.triangles:
+            return None
+
+        r = random.uniform(0.0, self.total_area)
+        idx = bisect.bisect_left(self.cumulative, r)
+        idx = min(idx, len(self.triangles) - 1)
+
+        return self.triangles[idx]
 
 
 # =========================================================

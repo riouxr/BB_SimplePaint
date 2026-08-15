@@ -71,13 +71,15 @@ def raycast_for_paint(context, mouse_coord, source_collection, placed_collection
 
     if scene.simplepaint_paint_mode == 'SURFACE':
 
-        target = scene.simplepaint_surface
+        targets = utils.get_surface_targets(
+            context, source_collection, placed_collection
+        )
 
-        if target is None:
+        if not targets:
             return None
 
-        return utils.raycast(
-            context, mouse_coord, target_object=target
+        return utils.raycast_targets(
+            context, mouse_coord, targets
         )
 
     def exclude(hit_obj):
@@ -118,18 +120,23 @@ def validate_prerequisites(operator, context):
 
         return None
 
-    if (
-        context.scene.simplepaint_paint_mode == 'SURFACE'
-        and context.scene.simplepaint_surface is None
-    ):
+    if context.scene.simplepaint_paint_mode == 'SURFACE':
 
-        operator.report(
-            {'ERROR'},
-            "Choose a Base Mesh, or switch Paint On "
-            "to 'Any Surface'"
+        placed_collection = utils.get_placed_collection(context)
+
+        targets = utils.get_surface_targets(
+            context, source_collection, placed_collection
         )
 
-        return None
+        if not targets:
+
+            operator.report(
+                {'ERROR'},
+                "Select one or more surface objects first, "
+                "or switch Paint On to 'Any Surface'"
+            )
+
+            return None
 
     return source_collection
 
@@ -805,9 +812,138 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
         self.finish(context)
 
 
+# =========================================================
+# FLOOD OPERATOR
+# =========================================================
+
+class SIMPLEPAINT_OT_flood(bpy.types.Operator):
+
+    bl_idname = "simplepaint.flood"
+    bl_label = "Flood"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    bl_description = (
+        "Cover the entire selected surface object(s) with items"
+    )
+
+    @classmethod
+    def poll(cls, context):
+
+        if context.scene.simplepaint_paint_mode != 'SURFACE':
+
+            cls.poll_message_set(
+                "Requires Paint On = 'Selected Surface(s)'"
+            )
+
+            return False
+
+        return True
+
+    def execute(self, context):
+
+        source_collection = validate_prerequisites(self, context)
+
+        if source_collection is None:
+            return {'CANCELLED'}
+
+        placed_collection = utils.get_placed_collection(context)
+
+        targets = utils.get_surface_targets(
+            context, source_collection, placed_collection
+        )
+
+        brush_size = context.scene.simplepaint_brush_size
+        density = context.scene.simplepaint_density
+        spacing = utils.density_to_spacing(brush_size, density)
+
+        spatial_hash = utils.build_spatial_hash(
+            placed_collection, max(spacing, 0.2)
+        )
+
+        total_placed = 0
+
+        for obj in targets:
+
+            total_placed += self.flood_object(
+                context, obj, source_collection,
+                placed_collection, spatial_hash, spacing
+            )
+
+        self.report(
+            {'INFO'},
+            f"Flooded {total_placed} item(s)"
+        )
+
+        return {'FINISHED'}
+
+    def flood_object(
+        self, context, obj, source_collection,
+        placed_collection, spatial_hash, spacing
+    ):
+
+        triangles = utils.get_evaluated_triangles(context, obj)
+
+        if not triangles:
+            return 0
+
+        weighted = utils.WeightedTriangles(triangles)
+
+        if weighted.total_area <= 0.0:
+            return 0
+
+        target_count = max(
+            1, int(weighted.total_area / (spacing * spacing))
+        )
+
+        max_attempts = min(target_count * 30, 20000)
+
+        placed = 0
+
+        for _ in range(max_attempts):
+
+            if placed >= target_count:
+                break
+
+            triangle = weighted.pick()
+
+            if triangle is None:
+                break
+
+            verts, normal, area = triangle
+
+            point = utils.sample_point_in_triangle(verts)
+
+            if spatial_hash.is_too_close(point, spacing):
+                continue
+
+            source_root = utils.pick_item(source_collection)
+
+            if source_root is None:
+                continue
+
+            new_root = utils.duplicate_item(
+                context, source_root, placed_collection
+            )
+
+            random_quat = utils.roll_random_quat(context)
+            scale_factor = utils.roll_scale_factor(context)
+
+            new_root.matrix_world = utils.item_transform(
+                context, source_root, point, normal,
+                random_quat, scale_factor
+            )
+
+            spatial_hash.add(point)
+
+            placed += 1
+
+        return placed
+
+
 classes = (
     SIMPLEPAINT_OT_paint,
     SIMPLEPAINT_OT_place_one,
+    SIMPLEPAINT_OT_flood,
 )
 
 
