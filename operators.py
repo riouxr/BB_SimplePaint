@@ -866,7 +866,7 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
 
             total_placed += self.flood_object(
                 context, obj, source_collection,
-                placed_collection, spatial_hash, spacing
+                placed_collection, spatial_hash, spacing, density
             )
 
         self.report(
@@ -878,7 +878,7 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
 
     def flood_object(
         self, context, obj, source_collection,
-        placed_collection, spatial_hash, spacing
+        placed_collection, spatial_hash, spacing, density
     ):
 
         triangles = utils.get_evaluated_triangles(context, obj)
@@ -891,8 +891,14 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
         if weighted.total_area <= 0.0:
             return 0
 
+        # spacing alone only controls how tightly-packed neighbors
+        # are; density must also scale the total item count, or low
+        # density still fully tiles the surface (just with wider
+        # gaps) instead of scattering only a few items
+        full_pack_count = weighted.total_area / (spacing * spacing)
+
         target_count = max(
-            1, int(weighted.total_area / (spacing * spacing))
+            1, int(full_pack_count * density)
         )
 
         max_attempts = min(target_count * 30, 20000)
