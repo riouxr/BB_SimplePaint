@@ -17,14 +17,15 @@ Placed items are **linked duplicates**: they share mesh/data with their source (
   - **Align** — how placed items are oriented: tilt to match the **Surface** normal, always keep the item's up axis fixed to world **X**, **Y**, or **Z** regardless of surface tilt, or **Object** — point a chosen local axis of the item at a target object (pick it with the field's built-in eyedropper; choose which axis with the Axis dropdown).
   - **Random Rotation** — independent X/Y/Z toggles; each enabled axis gets a random spin per item, on top of the alignment above.
   - **Random Scale** — Min/Max uniform scale factor, randomized per item.
+- **Spacing** — the minimum distance between items, in **world units**. This is the single density control and it is absolute, so painting a patch and flooding the whole surface land items at exactly the same density. Spacing 1.0 gives the same result on a 5 m plane and a 50 m plane.
+- **Brush Size** — how large an *area* a paint stroke covers. It has **no effect on density** — a bigger brush covers more ground per stroke at the same spacing, it doesn't pack items tighter or looser.
+- **Preview Spacing** — toggle a dot overlay on the selected surface(s) showing exactly where items would land at the current Spacing, so you can gauge density before committing. The dots match what Flood would place one-for-one.
 - **Paint** — hold Left Mouse and drag to stamp a stream of items onto the surface under the brush. Release to stop, click again to start a new stroke, Right Mouse/Esc to exit.
-  - **Size** — brush radius in world units.
-  - **Density** — how tightly packed stamps are within the brush; also keeps a minimum spacing so items don't stack on top of each other.
   - **E** — toggle Paint/Erase without leaving the tool.
   - **F**, then move the mouse left/right, then click/Enter to confirm (or Esc/Right Mouse to cancel just the resize) — drag-resize the brush, same as Blender's sculpt/paint brushes. Mouse wheel also resizes.
   - **Tab** — switch straight to Place One without exiting.
 - **Erase** — same brush and hotkeys as Paint, but removes any placed items under the cursor instead (works regardless of Paint On mode — it checks the brush circle on screen, not the surface).
-- **Flood** — one click covers the entire selected surface object(s) with items at the current Size/Density spacing. Only available when Paint On is "Selected Surface(s)".
+- **Flood** — one click covers the entire selected surface object(s) with items at the current Spacing. Only available when Paint On is "Selected Surface(s)".
 - **Place One** — click and hold to drop a single item, drag while held to slide it around (snapped to whatever surface is under the cursor, respecting the same Align/Random Rotation/Random Scale settings, rolled once per item and kept while dragging), release to commit. Repeat to place more without reactivating the tool. **Tab** switches straight to Paint. Esc/Right Mouse exits (cancels only the item currently mid-drag, if any, keeping everything already dropped).
 - Every stamp/placement picks a random item from the source collection, but never repeats one of the last 20 distinct picks (or fewer, if the collection is smaller) — no two identical items end up next to each other.
 

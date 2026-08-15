@@ -209,14 +209,11 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
             if self.source_collection is None:
                 return {'CANCELLED'}
 
-        spacing = utils.density_to_spacing(
-            context.scene.simplepaint_brush_size,
-            context.scene.simplepaint_density
-        )
+        spacing = context.scene.simplepaint_spacing
 
         self.spatial_hash = utils.build_spatial_hash(
             self.placed_collection,
-            max(spacing, 0.2)
+            spacing
         )
 
         self.mouse_pos = (
@@ -485,17 +482,22 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
         center, normal, hit_obj = hit
 
         brush_size = context.scene.simplepaint_brush_size
-        density = context.scene.simplepaint_density
+        spacing = context.scene.simplepaint_spacing
 
         self.pixel_radius = utils.world_radius_to_pixels(
             context, center, brush_size
         )
 
-        spacing = utils.density_to_spacing(
-            brush_size, density
-        )
+        # Spacing is absolute world distance, so the brush only
+        # decides how much area a tick covers, never how packed the
+        # result is. Sample proportionally to how many items could
+        # fit under the brush, so a bigger brush fills its larger
+        # area at the same density instead of thinning out.
+        capacity = (
+            math.pi * brush_size * brush_size
+        ) / (spacing * spacing)
 
-        attempts = 1 + int(density * 6)
+        attempts = max(1, min(int(capacity) + 1, 40))
 
         for _ in range(attempts):
 
@@ -852,12 +854,14 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
             context, source_collection, placed_collection
         )
 
-        brush_size = context.scene.simplepaint_brush_size
-        density = context.scene.simplepaint_density
-        spacing = utils.density_to_spacing(brush_size, density)
+        # Spacing is an absolute world distance, so flooding a whole
+        # surface and painting a patch of it land items at the same
+        # density. Brush Size is not involved here at all -- it only
+        # scopes how much area a paint stroke covers.
+        spacing = context.scene.simplepaint_spacing
 
         spatial_hash = utils.build_spatial_hash(
-            placed_collection, max(spacing, 0.2)
+            placed_collection, spacing
         )
 
         total_placed = 0
@@ -866,8 +870,7 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
 
             total_placed += self.flood_object(
                 context, obj, source_collection,
-                placed_collection, spatial_hash, spacing,
-                density, brush_size
+                placed_collection, spatial_hash, spacing
             )
 
         self.report(
@@ -879,8 +882,7 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
 
     def flood_object(
         self, context, obj, source_collection,
-        placed_collection, spatial_hash, spacing,
-        density, brush_size
+        placed_collection, spatial_hash, spacing
     ):
 
         triangles = utils.get_evaluated_triangles(context, obj)
@@ -888,49 +890,13 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
         if not triangles:
             return 0
 
-        weighted = utils.WeightedTriangles(triangles)
-
-        if weighted.total_area <= 0.0:
-            return 0
-
-        # Target count scales linearly with density against a count
-        # reference tied to brush size (roughly "one item per
-        # brush-size-square patch" at max density), NOT against the
-        # much tighter minimum spacing -- that spacing/density
-        # formula is calibrated for Paint's per-stroke brush and
-        # explodes quadratically over a whole surface, giving a
-        # slider that barely does anything below ~90% and then jumps
-        # by 60x+ in the last stretch. Overlap-avoidance still uses
-        # the finer `spacing` value via spatial_hash below, just not
-        # for how many items we're aiming for.
-        full_pack_count = (
-            weighted.total_area / (brush_size * brush_size)
+        samples = utils.sample_triangles(
+            triangles, spacing, spatial_hash=spatial_hash
         )
-
-        target_count = max(
-            1, int(full_pack_count * density)
-        )
-
-        max_attempts = min(target_count * 30, 20000)
 
         placed = 0
 
-        for _ in range(max_attempts):
-
-            if placed >= target_count:
-                break
-
-            triangle = weighted.pick()
-
-            if triangle is None:
-                break
-
-            verts, normal, area = triangle
-
-            point = utils.sample_point_in_triangle(verts)
-
-            if spatial_hash.is_too_close(point, spacing):
-                continue
+        for point, normal in samples:
 
             source_root = utils.pick_item(source_collection)
 
@@ -948,8 +914,6 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
                 context, source_root, point, normal,
                 random_quat, scale_factor
             )
-
-            spatial_hash.add(point)
 
             placed += 1
 

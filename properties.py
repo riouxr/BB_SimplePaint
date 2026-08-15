@@ -1,5 +1,13 @@
 import bpy
 
+from . import preview
+
+
+def refresh_preview(self, context):
+
+    preview.clear_cache()
+    preview.tag_redraw_all(context)
+
 
 def register():
 
@@ -46,17 +54,32 @@ def register():
         )
     )
 
-    bpy.types.Scene.simplepaint_density = (
+    bpy.types.Scene.simplepaint_spacing = (
         bpy.props.FloatProperty(
-            name="Density",
+            name="Spacing",
             description=(
-                "How tightly packed the stamped items are "
-                "within the brush"
+                "Minimum distance between placed items, in world "
+                "units. Because this is a real world-space "
+                "distance, Paint and Flood produce the same "
+                "coverage density"
             ),
-            default=0.5,
-            min=0.0,
-            max=1.0,
-            subtype='FACTOR'
+            default=1.0,
+            min=0.001,
+            soft_max=20.0,
+            unit='LENGTH',
+            update=refresh_preview
+        )
+    )
+
+    bpy.types.Scene.simplepaint_show_preview = (
+        bpy.props.BoolProperty(
+            name="Preview Spacing",
+            description=(
+                "Show a dot on each selected surface where an "
+                "item would land at the current Spacing"
+            ),
+            default=False,
+            update=refresh_preview
         )
     )
 
@@ -183,7 +206,8 @@ def unregister():
     del bpy.types.Scene.simplepaint_collection_name
     del bpy.types.Scene.simplepaint_paint_mode
     del bpy.types.Scene.simplepaint_brush_size
-    del bpy.types.Scene.simplepaint_density
+    del bpy.types.Scene.simplepaint_spacing
+    del bpy.types.Scene.simplepaint_show_preview
     del bpy.types.Scene.simplepaint_align_mode
     del bpy.types.Scene.simplepaint_orient_target
     del bpy.types.Scene.simplepaint_orient_axis

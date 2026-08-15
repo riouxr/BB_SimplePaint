@@ -2,6 +2,7 @@ if "bpy" in locals():
     import importlib
     for mod in [
         utils,
+        preview,
         properties,
         operators,
         ui,
@@ -12,6 +13,7 @@ else:
     import bpy
     from . import (
         utils,
+        preview,
         properties,
         operators,
         ui,
@@ -21,6 +23,7 @@ else:
 #### ------------------------------ REGISTRATION ------------------------------ ####
 
 modules = [
+    preview,
     properties,
     operators,
     ui,

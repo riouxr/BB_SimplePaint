@@ -612,8 +612,66 @@ def build_spatial_hash(placed_collection, cell_size):
     return spatial_hash
 
 
-def density_to_spacing(brush_size, density):
+# Dart-throwing with a hard minimum distance saturates well below
+# the theoretical area / spacing^2 packing, so aiming for that count
+# just burns the whole attempt budget on rejections. This is the
+# realistic share of it to target.
+PACKING_EFFICIENCY = 0.6
 
-    spacing = brush_size * (1.05 - density) * 0.5
+ATTEMPTS_PER_TARGET = 20
 
-    return max(spacing, 0.05)
+
+def sample_triangles(
+    triangles, spacing, max_points=None, spatial_hash=None
+):
+
+    if not triangles or spacing <= 0.0:
+        return []
+
+    total_area = sum(area for _, _, area in triangles)
+
+    if total_area <= 0.0:
+        return []
+
+    weighted = WeightedTriangles(triangles)
+
+    if spatial_hash is None:
+        spatial_hash = SpatialHash(spacing)
+
+    target_count = max(
+        1,
+        int(
+            total_area / (spacing * spacing) * PACKING_EFFICIENCY
+        )
+    )
+
+    if max_points is not None:
+        target_count = min(target_count, max_points)
+
+    if target_count <= 0:
+        return []
+
+    samples = []
+
+    for _ in range(target_count * ATTEMPTS_PER_TARGET):
+
+        if len(samples) >= target_count:
+            break
+
+        triangle = weighted.pick()
+
+        if triangle is None:
+            break
+
+        verts, normal, area = triangle
+
+        point = sample_point_in_triangle(verts)
+
+        if spatial_hash.is_too_close(point, spacing):
+            continue
+
+        spatial_hash.add(point)
+
+        samples.append((point, normal))
+
+    return samples

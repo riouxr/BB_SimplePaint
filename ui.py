@@ -175,14 +175,26 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
 
         box.prop(
             scene,
-            "simplepaint_brush_size",
-            text="Size"
+            "simplepaint_spacing",
+            text="Spacing"
         )
 
         box.prop(
             scene,
-            "simplepaint_density",
-            text="Density"
+            "simplepaint_brush_size",
+            text="Brush Size"
+        )
+
+        row = box.row()
+
+        row.enabled = scene.simplepaint_paint_mode == 'SURFACE'
+
+        row.prop(
+            scene,
+            "simplepaint_show_preview",
+            text="Preview Spacing",
+            toggle=True,
+            icon='SNAP_VERTEX'
         )
 
         row = box.row(align=True)
