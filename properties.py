@@ -358,6 +358,19 @@ def register():
 
         setattr(
             bpy.types.Scene,
+            f"simplepaint_random_scale_{axis}",
+            bpy.props.BoolProperty(
+                name=ROT_LABELS[axis],
+                description=(
+                    "Randomize scale on the "
+                    f"{ROT_LABELS[axis]} axis"
+                ),
+                default=False
+            )
+        )
+
+        setattr(
+            bpy.types.Scene,
             f"simplepaint_scale_min_{axis}",
             bpy.props.FloatProperty(
                 name="Min",
@@ -415,6 +428,9 @@ def unregister():
 
         delattr(
             bpy.types.Scene, f"simplepaint_random_rot_{axis}"
+        )
+        delattr(
+            bpy.types.Scene, f"simplepaint_random_scale_{axis}"
         )
         delattr(bpy.types.Scene, f"simplepaint_rot_min_{axis}")
         delattr(bpy.types.Scene, f"simplepaint_rot_max_{axis}")

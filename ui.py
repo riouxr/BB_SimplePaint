@@ -227,23 +227,46 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
             toggle=True
         )
 
+        row = box.row(align=True)
+
+        for axis in AXES:
+
+            row.prop(
+                scene,
+                f"simplepaint_random_scale_{axis}",
+                text=AXIS_LABELS[axis],
+                toggle=True
+            )
+
+        scale_axes = [
+            axis
+            for axis in AXES
+            if getattr(scene, f"simplepaint_random_scale_{axis}")
+        ]
+
         if scene.simplepaint_scale_sync:
 
-            row = box.row(align=True)
+            if scale_axes:
 
-            row.label(text="All")
+                row = box.row(align=True)
 
-            row.prop(
-                scene, "simplepaint_scale_min_x", text="Min"
-            )
+                row.label(
+                    text=" ".join(
+                        AXIS_LABELS[axis] for axis in scale_axes
+                    )
+                )
 
-            row.prop(
-                scene, "simplepaint_scale_max_x", text="Max"
-            )
+                row.prop(
+                    scene, "simplepaint_scale_min_x", text="Min"
+                )
+
+                row.prop(
+                    scene, "simplepaint_scale_max_x", text="Max"
+                )
 
         else:
 
-            for axis in AXES:
+            for axis in scale_axes:
 
                 row = box.row(align=True)
 

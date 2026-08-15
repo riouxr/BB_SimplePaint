@@ -448,29 +448,48 @@ def roll_scale_mult(context):
 
     scene = context.scene
 
+    axes = ('x', 'y', 'z')
+
+    enabled = [
+        axis
+        for axis in axes
+        if getattr(scene, f"simplepaint_random_scale_{axis}")
+    ]
+
+    # Disabled axes keep a multiplier of 1.0, so scaling only X and Y
+    # leaves Z at the source object's own scale.
+    mult = [1.0, 1.0, 1.0]
+
+    if not enabled:
+        return Vector(mult)
+
     if scene.simplepaint_scale_sync:
 
+        # One factor shared by the enabled axes, so they stay
+        # proportional to each other.
         factor = random_in_range(
             scene.simplepaint_scale_min_x,
             scene.simplepaint_scale_max_x,
         )
 
-        return Vector((factor, factor, factor))
+        for index, axis in enumerate(axes):
 
-    return Vector((
-        random_in_range(
-            scene.simplepaint_scale_min_x,
-            scene.simplepaint_scale_max_x,
-        ),
-        random_in_range(
-            scene.simplepaint_scale_min_y,
-            scene.simplepaint_scale_max_y,
-        ),
-        random_in_range(
-            scene.simplepaint_scale_min_z,
-            scene.simplepaint_scale_max_z,
-        ),
-    ))
+            if axis in enabled:
+                mult[index] = factor
+
+        return Vector(mult)
+
+    for index, axis in enumerate(axes):
+
+        if axis not in enabled:
+            continue
+
+        mult[index] = random_in_range(
+            getattr(scene, f"simplepaint_scale_min_{axis}"),
+            getattr(scene, f"simplepaint_scale_max_{axis}"),
+        )
+
+    return Vector(mult)
 
 
 # =========================================================
