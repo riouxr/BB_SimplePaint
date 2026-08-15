@@ -130,7 +130,15 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
         default=False
     )
 
-    def __init__(self):
+    @classmethod
+    def poll(cls, context):
+
+        return (
+            context.area is not None
+            and context.area.type == 'VIEW_3D'
+        )
+
+    def invoke(self, context, event):
 
         self.mouse_pos = None
         self.pixel_radius = 40.0
@@ -141,16 +149,6 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
         self.spatial_hash = None
         self.source_collection = None
         self.placed_collection = None
-
-    @classmethod
-    def poll(cls, context):
-
-        return (
-            context.area is not None
-            and context.area.type == 'VIEW_3D'
-        )
-
-    def invoke(self, context, event):
 
         self.placed_collection = utils.get_placed_collection(
             context
@@ -470,17 +468,6 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
         "drag to move it while held, release to drop it"
     )
 
-    def __init__(self):
-
-        self.mouse_pos = None
-        self.pixel_radius = 40.0
-        self.valid_hit = False
-        self.state = 'WAITING'
-        self.new_root = None
-        self.draw_handler = None
-        self.source_collection = None
-        self.placed_collection = None
-
     @classmethod
     def poll(cls, context):
 
@@ -490,6 +477,15 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
         )
 
     def invoke(self, context, event):
+
+        self.mouse_pos = None
+        self.pixel_radius = 40.0
+        self.valid_hit = False
+        self.state = 'WAITING'
+        self.new_root = None
+        self.draw_handler = None
+        self.source_collection = None
+        self.placed_collection = None
 
         self.source_collection = utils.get_source_collection(
             context
