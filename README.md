@@ -13,11 +13,13 @@ Painted characters are **linked duplicates**: they share mesh/armature data with
 ## Features
 
 - **Paint On** — restrict painting to one chosen Base Mesh ("Selected Surface"), or let the brush hit anything in the scene ("Any Surface").
-- **Paint** — hold Left Mouse and drag to stamp a stream of characters onto the surface under the brush. Release to stop, click again to start a new stroke, Right Mouse/Esc to exit. Scroll the mouse wheel mid-stroke to change brush size.
+- **Paint** — hold Left Mouse and drag to stamp a stream of characters onto the surface under the brush. Release to stop, click again to start a new stroke, Right Mouse/Esc to exit.
   - **Size** — brush radius in world units.
   - **Density** — how tightly packed stamps are within the brush; also keeps a minimum spacing so characters don't stack on top of each other.
-- **Erase** — same brush, hold Left Mouse and drag to remove any placed characters under the cursor (works regardless of Paint On mode — it checks the brush circle on screen, not the surface). Right Mouse/Esc to exit.
-- **Place One Character** — click and hold to drop a single character, drag while held to slide it around (snapped to whatever surface is under the cursor), release to commit, Esc/Right Mouse to cancel.
+  - **E** — toggle Paint/Erase without leaving the tool.
+  - **F**, then move the mouse left/right, then click/Enter to confirm (or Esc/Right Mouse to cancel just the resize) — drag-resize the brush, same as Blender's sculpt/paint brushes. Mouse wheel also resizes.
+- **Erase** — same brush and hotkeys as Paint, but removes any placed characters under the cursor instead (works regardless of Paint On mode — it checks the brush circle on screen, not the surface).
+- **Place One Character** — click and hold to drop a single character, drag while held to slide it around (snapped to whatever surface is under the cursor), release to commit. Repeat to place more without reactivating the tool. Esc/Right Mouse to exit (cancels the character currently being dragged, if any, but keeps everything already dropped).
 - Every stamp picks a random character from `PeopleLib`, but never repeats one of the last 20 distinct picks (or fewer, if the library is smaller) — no two identical characters end up next to each other.
 - Placed characters always keep their original upright orientation (no tilting to match slopes) — only their position snaps to the surface.
 

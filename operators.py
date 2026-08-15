@@ -150,6 +150,11 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
         self.source_collection = None
         self.placed_collection = None
 
+        self.resizing = False
+        self.resize_start_mouse_x = None
+        self.resize_start_size = None
+        self.resize_start_pixel_radius = None
+
         self.placed_collection = utils.get_placed_collection(
             context
         )
@@ -193,15 +198,15 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
 
                 return {'CANCELLED'}
 
-            spacing = utils.density_to_spacing(
-                context.scene.peoplelib_brush_size,
-                context.scene.peoplelib_density
-            )
+        spacing = utils.density_to_spacing(
+            context.scene.peoplelib_brush_size,
+            context.scene.peoplelib_density
+        )
 
-            self.spatial_hash = utils.build_spatial_hash(
-                self.placed_collection,
-                max(spacing, 0.2)
-            )
+        self.spatial_hash = utils.build_spatial_hash(
+            self.placed_collection,
+            max(spacing, 0.2)
+        )
 
         self.mouse_pos = (
             event.mouse_region_x,
@@ -225,11 +230,28 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
 
         context.area.tag_redraw()
 
+        self.update_header(context)
+
         return {'RUNNING_MODAL'}
+
+    def update_header(self, context):
+
+        mode = "Erase" if self.erase else "Paint"
+
+        context.area.header_text_set(
+            f"PeopleLib [{mode}]  |  LMB: "
+            f"{'Erase' if self.erase else 'Paint'}  "
+            "|  E: Toggle Erase  |  F: Resize Brush "
+            "(drag, click/Enter to confirm)  |  "
+            "Wheel: Resize  |  RMB/Esc: Exit"
+        )
 
     def modal(self, context, event):
 
         context.area.tag_redraw()
+
+        if self.resizing:
+            return self.modal_resize(context, event)
 
         if event.type == 'MOUSEMOVE':
 
@@ -269,11 +291,83 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
 
             self.update_preview(context)
 
+        elif event.type == 'E' and event.value == 'PRESS':
+
+            self.erase = not self.erase
+            self.painting = False
+            self.update_preview(context)
+            self.update_header(context)
+
+        elif event.type == 'F' and event.value == 'PRESS':
+
+            self.start_resize(context)
+
         elif event.type in {'RIGHTMOUSE', 'ESC'}:
 
             self.finish(context)
 
             return {'FINISHED'}
+
+        return {'RUNNING_MODAL'}
+
+    def start_resize(self, context):
+
+        self.resizing = True
+        self.painting = False
+        self.resize_start_mouse_x = None
+        self.resize_start_size = context.scene.peoplelib_brush_size
+        self.resize_start_pixel_radius = self.pixel_radius or 40.0
+
+    def modal_resize(self, context, event):
+
+        if event.type == 'MOUSEMOVE':
+
+            self.mouse_pos = (
+                event.mouse_region_x,
+                event.mouse_region_y,
+            )
+
+            if self.resize_start_mouse_x is None:
+                self.resize_start_mouse_x = event.mouse_x
+
+            delta = event.mouse_x - self.resize_start_mouse_x
+
+            new_pixel_radius = max(
+                2.0, self.resize_start_pixel_radius + delta
+            )
+
+            ratio = new_pixel_radius / max(
+                self.resize_start_pixel_radius, 1.0
+            )
+
+            context.scene.peoplelib_brush_size = max(
+                0.01, self.resize_start_size * ratio
+            )
+
+            self.pixel_radius = new_pixel_radius
+
+            return {'RUNNING_MODAL'}
+
+        if (
+            event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER', 'F'}
+            and event.value == 'PRESS'
+        ):
+
+            self.resizing = False
+            self.update_preview(context)
+
+            return {'RUNNING_MODAL'}
+
+        if event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
+
+            context.scene.peoplelib_brush_size = (
+                self.resize_start_size
+            )
+
+            self.resizing = False
+            self.update_preview(context)
+
+            return {'RUNNING_MODAL'}
 
         return {'RUNNING_MODAL'}
 
@@ -448,6 +542,8 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
 
             self.draw_handler = None
 
+        context.area.header_text_set(None)
+
     def cancel(self, context):
 
         self.finish(context)
@@ -464,8 +560,9 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     bl_description = (
-        "Click and hold to place a single character, "
-        "drag to move it while held, release to drop it"
+        "Click and hold to place a character, drag to move it "
+        "while held, release to drop it. Repeat to place more, "
+        "Right Mouse or Esc to exit"
     )
 
     @classmethod
@@ -486,6 +583,7 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
         self.draw_handler = None
         self.source_collection = None
         self.placed_collection = None
+        self.placed_count = 0
 
         self.source_collection = utils.get_source_collection(
             context
@@ -546,6 +644,12 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
 
         context.area.tag_redraw()
 
+        context.area.header_text_set(
+            "PeopleLib [Place One]  |  LMB: place & drag, "
+            "release to drop, repeat for more  |  "
+            "RMB/Esc: Exit"
+        )
+
         return {'RUNNING_MODAL'}
 
     def modal(self, context, event):
@@ -584,16 +688,20 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
                 and self.state == 'DRAGGING'
             ):
 
-                self.finish(context)
-
-                return {'FINISHED'}
+                self.placed_count += 1
+                self.new_root = None
+                self.state = 'WAITING'
 
         elif event.type in {'RIGHTMOUSE', 'ESC'}:
 
             if self.new_root is not None:
                 utils.delete_hierarchy(self.new_root)
+                self.new_root = None
 
             self.finish(context)
+
+            if self.placed_count > 0:
+                return {'FINISHED'}
 
             return {'CANCELLED'}
 
@@ -662,6 +770,8 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
             )
 
             self.draw_handler = None
+
+        context.area.header_text_set(None)
 
     def cancel(self, context):
 
