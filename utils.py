@@ -2,11 +2,11 @@ import bpy
 import math
 import random
 
-from mathutils import Vector
+from mathutils import Vector, Matrix, Quaternion
 from bpy_extras import view3d_utils
 
 
-PLACED_COLLECTION_NAME = "PeopleLib_Placed"
+PLACED_COLLECTION_NAME = "SimplePaint_Placed"
 
 ANTI_REPEAT_HISTORY = 20
 
@@ -19,7 +19,7 @@ _pick_history = []
 
 def get_source_collection(context):
 
-    name = context.scene.peoplelib_collection_name
+    name = context.scene.simplepaint_collection_name
 
     return bpy.data.collections.get(name)
 
@@ -59,7 +59,7 @@ def is_library_object(obj, source_collection, placed_collection):
 
 
 # =========================================================
-# CHARACTER PICKER (anti-repeat)
+# ITEM PICKER (anti-repeat)
 # =========================================================
 
 def reset_pick_history():
@@ -67,7 +67,7 @@ def reset_pick_history():
     _pick_history.clear()
 
 
-def get_character_roots(source_collection):
+def get_item_roots(source_collection):
 
     return [
         obj
@@ -76,9 +76,9 @@ def get_character_roots(source_collection):
     ]
 
 
-def pick_character(source_collection):
+def pick_item(source_collection):
 
-    members = get_character_roots(source_collection)
+    members = get_item_roots(source_collection)
 
     if not members:
         return None
@@ -117,7 +117,7 @@ def pick_character(source_collection):
 # HIERARCHY DUPLICATION (linked duplicate)
 # =========================================================
 
-def duplicate_character(context, source_root, placed_collection):
+def duplicate_item(context, source_root, placed_collection):
 
     hierarchy = [source_root] + list(
         source_root.children_recursive
@@ -275,6 +275,114 @@ def random_point_in_disk(radius):
     theta = random.uniform(0.0, 2.0 * math.pi)
 
     return r * math.cos(theta), r * math.sin(theta)
+
+
+# =========================================================
+# ALIGNMENT / ROTATION / SCALE
+# =========================================================
+
+AXIS_VECTORS = {
+    'X': Vector((1.0, 0.0, 0.0)),
+    'Y': Vector((0.0, 1.0, 0.0)),
+    'Z': Vector((0.0, 0.0, 1.0)),
+}
+
+
+def get_target_up(align_mode, hit_normal):
+
+    if align_mode == 'SURFACE':
+        return hit_normal.normalized()
+
+    return AXIS_VECTORS.get(align_mode, AXIS_VECTORS['Z']).copy()
+
+
+def compute_align_quat(source_root, target_up):
+
+    source_matrix = source_root.matrix_world.to_3x3()
+    source_up = (source_matrix @ Vector((0.0, 0.0, 1.0)))
+
+    if source_up.length_squared < 1e-12:
+        source_up = Vector((0.0, 0.0, 1.0))
+    else:
+        source_up.normalize()
+
+    target_up = target_up.normalized()
+
+    delta = source_up.rotation_difference(target_up)
+    source_quat = source_root.matrix_world.to_quaternion()
+
+    return delta @ source_quat
+
+
+def random_axis_quat(random_x, random_y, random_z):
+
+    quat = Quaternion()
+
+    if random_x:
+        quat = quat @ Quaternion(
+            AXIS_VECTORS['X'], random.uniform(0.0, 2.0 * math.pi)
+        )
+
+    if random_y:
+        quat = quat @ Quaternion(
+            AXIS_VECTORS['Y'], random.uniform(0.0, 2.0 * math.pi)
+        )
+
+    if random_z:
+        quat = quat @ Quaternion(
+            AXIS_VECTORS['Z'], random.uniform(0.0, 2.0 * math.pi)
+        )
+
+    return quat
+
+
+def random_scale_factor(scale_min, scale_max):
+
+    lo = min(scale_min, scale_max)
+    hi = max(scale_min, scale_max)
+
+    return random.uniform(lo, hi)
+
+
+def build_matrix(location, rotation_quat, scale_vec):
+
+    return Matrix.LocRotScale(location, rotation_quat, scale_vec)
+
+
+def item_transform(context, source_root, location, hit_normal, random_quat, scale_factor):
+
+    align_mode = context.scene.simplepaint_align_mode
+
+    target_up = get_target_up(align_mode, hit_normal)
+
+    align_quat = compute_align_quat(source_root, target_up)
+
+    final_quat = align_quat @ random_quat
+
+    scale_vec = Vector(source_root.scale) * scale_factor
+
+    return build_matrix(location, final_quat, scale_vec)
+
+
+def roll_random_quat(context):
+
+    scene = context.scene
+
+    return random_axis_quat(
+        scene.simplepaint_random_rot_x,
+        scene.simplepaint_random_rot_y,
+        scene.simplepaint_random_rot_z,
+    )
+
+
+def roll_scale_factor(context):
+
+    scene = context.scene
+
+    return random_scale_factor(
+        scene.simplepaint_scale_min,
+        scene.simplepaint_scale_max,
+    )
 
 
 # =========================================================

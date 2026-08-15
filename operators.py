@@ -1,7 +1,6 @@
 import bpy
 import gpu
 import math
-import random
 
 from gpu_extras.batch import batch_for_shader
 
@@ -66,23 +65,13 @@ def draw_brush_circle(operator, context):
 # SHARED CONTEXT HELPERS
 # =========================================================
 
-def get_paint_target(context):
-
-    scene = context.scene
-
-    if scene.peoplelib_paint_mode == 'SURFACE':
-        return scene.peoplelib_surface
-
-    return None
-
-
 def raycast_for_paint(context, mouse_coord, source_collection, placed_collection):
 
     scene = context.scene
 
-    if scene.peoplelib_paint_mode == 'SURFACE':
+    if scene.simplepaint_paint_mode == 'SURFACE':
 
-        target = scene.peoplelib_surface
+        target = scene.simplepaint_surface
 
         if target is None:
             return None
@@ -105,26 +94,67 @@ def raycast_for_paint(context, mouse_coord, source_collection, placed_collection
     )
 
 
+def validate_prerequisites(operator, context):
+
+    source_collection = utils.get_source_collection(context)
+
+    if source_collection is None:
+
+        operator.report(
+            {'ERROR'},
+            "Collection "
+            f"'{context.scene.simplepaint_collection_name}' "
+            "not found"
+        )
+
+        return None
+
+    if not utils.get_item_roots(source_collection):
+
+        operator.report(
+            {'ERROR'},
+            "Collection has no items"
+        )
+
+        return None
+
+    if (
+        context.scene.simplepaint_paint_mode == 'SURFACE'
+        and context.scene.simplepaint_surface is None
+    ):
+
+        operator.report(
+            {'ERROR'},
+            "Choose a Base Mesh, or switch Paint On "
+            "to 'Any Surface'"
+        )
+
+        return None
+
+    return source_collection
+
+
 # =========================================================
 # PAINT OPERATOR
 # =========================================================
 
-class PEOPLELIB_OT_paint(bpy.types.Operator):
+class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
-    bl_idname = "peoplelib.paint"
-    bl_label = "Paint Characters"
+    bl_idname = "simplepaint.paint"
+    bl_label = "Paint Items"
     bl_options = {'REGISTER', 'UNDO'}
 
     bl_description = (
-        "Paint characters from the PeopleLib collection onto "
-        "a surface. Hold Left Mouse to paint, release to stop, "
-        "Right Mouse or Esc to exit"
+        "Paint items from the source collection onto a surface. "
+        "Hold Left Mouse to paint, release to stop, E to toggle "
+        "Erase, F to resize the brush, Tab to switch to Place "
+        "One, Right Mouse or Esc to exit"
     )
 
     erase: bpy.props.BoolProperty(
         name="Erase",
         description=(
-            "Remove placed characters under the brush instead "
+            "Remove placed items under the brush instead "
             "of stamping new ones"
         ),
         default=False
@@ -165,42 +195,16 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
 
         if not self.erase:
 
+            self.source_collection = validate_prerequisites(
+                self, context
+            )
+
             if self.source_collection is None:
-
-                self.report(
-                    {'ERROR'},
-                    "Collection "
-                    f"'{context.scene.peoplelib_collection_name}' "
-                    "not found"
-                )
-
-                return {'CANCELLED'}
-
-            if not utils.get_character_roots(self.source_collection):
-
-                self.report(
-                    {'ERROR'},
-                    "PeopleLib collection has no characters"
-                )
-
-                return {'CANCELLED'}
-
-            if (
-                context.scene.peoplelib_paint_mode == 'SURFACE'
-                and context.scene.peoplelib_surface is None
-            ):
-
-                self.report(
-                    {'ERROR'},
-                    "Choose a Base Mesh, or switch Paint On "
-                    "to 'Any Surface'"
-                )
-
                 return {'CANCELLED'}
 
         spacing = utils.density_to_spacing(
-            context.scene.peoplelib_brush_size,
-            context.scene.peoplelib_density
+            context.scene.simplepaint_brush_size,
+            context.scene.simplepaint_density
         )
 
         self.spatial_hash = utils.build_spatial_hash(
@@ -239,11 +243,12 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
         mode = "Erase" if self.erase else "Paint"
 
         context.area.header_text_set(
-            f"PeopleLib [{mode}]  |  LMB: "
+            f"Simple Paint [{mode}]  |  LMB: "
             f"{'Erase' if self.erase else 'Paint'}  "
             "|  E: Toggle Erase  |  F: Resize Brush "
             "(drag, click/Enter to confirm)  |  "
-            "Wheel: Resize  |  RMB/Esc: Exit"
+            "Wheel: Resize  |  Tab: Place One  |  "
+            "RMB/Esc: Exit"
         )
 
     def modal(self, context, event):
@@ -284,9 +289,9 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
                 else 1.0 / 1.1
             )
 
-            context.scene.peoplelib_brush_size = max(
+            context.scene.simplepaint_brush_size = max(
                 0.01,
-                context.scene.peoplelib_brush_size * factor
+                context.scene.simplepaint_brush_size * factor
             )
 
             self.update_preview(context)
@@ -302,6 +307,14 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
 
             self.start_resize(context)
 
+        elif event.type == 'TAB' and event.value == 'PRESS':
+
+            self.finish(context)
+
+            bpy.ops.simplepaint.place_one('INVOKE_DEFAULT')
+
+            return {'FINISHED'}
+
         elif event.type in {'RIGHTMOUSE', 'ESC'}:
 
             self.finish(context)
@@ -315,7 +328,7 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
         self.resizing = True
         self.painting = False
         self.resize_start_mouse_x = None
-        self.resize_start_size = context.scene.peoplelib_brush_size
+        self.resize_start_size = context.scene.simplepaint_brush_size
         self.resize_start_pixel_radius = self.pixel_radius or 40.0
 
     def modal_resize(self, context, event):
@@ -340,7 +353,7 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
                 self.resize_start_pixel_radius, 1.0
             )
 
-            context.scene.peoplelib_brush_size = max(
+            context.scene.simplepaint_brush_size = max(
                 0.01, self.resize_start_size * ratio
             )
 
@@ -360,7 +373,7 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
 
         if event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
 
-            context.scene.peoplelib_brush_size = (
+            context.scene.simplepaint_brush_size = (
                 self.resize_start_size
             )
 
@@ -396,7 +409,7 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
             self.pixel_radius = utils.world_radius_to_pixels(
                 context,
                 hit[0],
-                context.scene.peoplelib_brush_size
+                context.scene.simplepaint_brush_size
             )
 
     def try_erase(self, context):
@@ -445,7 +458,7 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
             self.pixel_radius = utils.world_radius_to_pixels(
                 context,
                 location,
-                context.scene.peoplelib_brush_size
+                context.scene.simplepaint_brush_size
             )
 
     def try_stamp(self, context):
@@ -464,8 +477,8 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
 
         center, normal, hit_obj = hit
 
-        brush_size = context.scene.peoplelib_brush_size
-        density = context.scene.peoplelib_density
+        brush_size = context.scene.simplepaint_brush_size
+        density = context.scene.simplepaint_density
 
         self.pixel_radius = utils.world_radius_to_pixels(
             context, center, brush_size
@@ -505,22 +518,28 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
             ):
                 continue
 
-            self.stamp(context, location)
+            self.stamp(context, location, sample_normal)
 
-    def stamp(self, context, location):
+    def stamp(self, context, location, normal):
 
-        source_root = utils.pick_character(
+        source_root = utils.pick_item(
             self.source_collection
         )
 
         if source_root is None:
             return
 
-        new_root = utils.duplicate_character(
+        new_root = utils.duplicate_item(
             context, source_root, self.placed_collection
         )
 
-        new_root.location = location
+        random_quat = utils.roll_random_quat(context)
+        scale_factor = utils.roll_scale_factor(context)
+
+        new_root.matrix_world = utils.item_transform(
+            context, source_root, location, normal,
+            random_quat, scale_factor
+        )
 
         self.spatial_hash.add(location)
 
@@ -553,16 +572,16 @@ class PEOPLELIB_OT_paint(bpy.types.Operator):
 # PLACE ONE OPERATOR
 # =========================================================
 
-class PEOPLELIB_OT_place_one(bpy.types.Operator):
+class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
 
-    bl_idname = "peoplelib.place_one"
-    bl_label = "Place One Character"
+    bl_idname = "simplepaint.place_one"
+    bl_label = "Place One"
     bl_options = {'REGISTER', 'UNDO'}
 
     bl_description = (
-        "Click and hold to place a character, drag to move it "
+        "Click and hold to place an item, drag to move it "
         "while held, release to drop it. Repeat to place more, "
-        "Right Mouse or Esc to exit"
+        "Tab to switch to Paint, Right Mouse or Esc to exit"
     )
 
     @classmethod
@@ -585,41 +604,15 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
         self.placed_collection = None
         self.placed_count = 0
 
-        self.source_collection = utils.get_source_collection(
-            context
+        self.item_source_root = None
+        self.item_random_quat = None
+        self.item_scale_factor = 1.0
+
+        self.source_collection = validate_prerequisites(
+            self, context
         )
 
         if self.source_collection is None:
-
-            self.report(
-                {'ERROR'},
-                "Collection "
-                f"'{context.scene.peoplelib_collection_name}' "
-                "not found"
-            )
-
-            return {'CANCELLED'}
-
-        if not utils.get_character_roots(self.source_collection):
-
-            self.report(
-                {'ERROR'},
-                "PeopleLib collection has no characters"
-            )
-
-            return {'CANCELLED'}
-
-        if (
-            context.scene.peoplelib_paint_mode == 'SURFACE'
-            and context.scene.peoplelib_surface is None
-        ):
-
-            self.report(
-                {'ERROR'},
-                "Choose a Base Mesh, or switch Paint On "
-                "to 'Any Surface'"
-            )
-
             return {'CANCELLED'}
 
         self.placed_collection = utils.get_placed_collection(
@@ -645,9 +638,9 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
         context.area.tag_redraw()
 
         context.area.header_text_set(
-            "PeopleLib [Place One]  |  LMB: place & drag, "
+            "Simple Paint [Place One]  |  LMB: place & drag, "
             "release to drop, repeat for more  |  "
-            "RMB/Esc: Exit"
+            "Tab: Paint  |  RMB/Esc: Exit"
         )
 
         return {'RUNNING_MODAL'}
@@ -675,7 +668,19 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
                 )
 
                 if hit is not None:
-                    self.new_root.location = hit[0]
+
+                    location, normal, hit_obj = hit
+
+                    self.new_root.matrix_world = (
+                        utils.item_transform(
+                            context,
+                            self.item_source_root,
+                            location,
+                            normal,
+                            self.item_random_quat,
+                            self.item_scale_factor
+                        )
+                    )
 
         elif event.type == 'LEFTMOUSE':
 
@@ -691,6 +696,21 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
                 self.placed_count += 1
                 self.new_root = None
                 self.state = 'WAITING'
+
+        elif event.type == 'TAB' and event.value == 'PRESS':
+
+            if self.new_root is not None:
+                utils.delete_hierarchy(self.new_root)
+                self.new_root = None
+
+            self.finish(context)
+
+            bpy.ops.simplepaint.paint('INVOKE_DEFAULT')
+
+            if self.placed_count > 0:
+                return {'FINISHED'}
+
+            return {'CANCELLED'}
 
         elif event.type in {'RIGHTMOUSE', 'ESC'}:
 
@@ -723,7 +743,7 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
             self.pixel_radius = utils.world_radius_to_pixels(
                 context,
                 hit[0],
-                context.scene.peoplelib_brush_size * 0.3
+                context.scene.simplepaint_brush_size * 0.3
             )
 
     def start_drag(self, context):
@@ -746,18 +766,25 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
 
         location, normal, hit_obj = hit
 
-        source_root = utils.pick_character(
+        source_root = utils.pick_item(
             self.source_collection
         )
 
         if source_root is None:
             return
 
-        self.new_root = utils.duplicate_character(
+        self.item_source_root = source_root
+        self.item_random_quat = utils.roll_random_quat(context)
+        self.item_scale_factor = utils.roll_scale_factor(context)
+
+        self.new_root = utils.duplicate_item(
             context, source_root, self.placed_collection
         )
 
-        self.new_root.location = location
+        self.new_root.matrix_world = utils.item_transform(
+            context, source_root, location, normal,
+            self.item_random_quat, self.item_scale_factor
+        )
 
         self.state = 'DRAGGING'
 
@@ -779,8 +806,8 @@ class PEOPLELIB_OT_place_one(bpy.types.Operator):
 
 
 classes = (
-    PEOPLELIB_OT_paint,
-    PEOPLELIB_OT_place_one,
+    SIMPLEPAINT_OT_paint,
+    SIMPLEPAINT_OT_place_one,
 )
 
 

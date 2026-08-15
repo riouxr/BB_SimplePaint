@@ -3,10 +3,10 @@ import bpy
 from . import utils
 
 
-class PEOPLELIB_PT_panel(bpy.types.Panel):
+class SIMPLEPAINT_PT_panel(bpy.types.Panel):
 
-    bl_label = "People Lib"
-    bl_idname = "PEOPLELIB_PT_panel"
+    bl_label = "Simple Paint"
+    bl_idname = "SIMPLEPAINT_PT_panel"
 
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -31,7 +31,7 @@ class PEOPLELIB_PT_panel(bpy.types.Panel):
 
         row.prop(
             scene,
-            "peoplelib_collection_name",
+            "simplepaint_collection_name",
             text="Collection"
         )
 
@@ -45,12 +45,12 @@ class PEOPLELIB_PT_panel(bpy.types.Panel):
         else:
 
             count = len(
-                utils.get_character_roots(source_collection)
+                utils.get_item_roots(source_collection)
             )
 
             box.label(
-                text=f"{count} character(s)",
-                icon='COMMUNITY'
+                text=f"{count} item(s)",
+                icon='MESH_DATA'
             )
 
         # -------------------------------------------------
@@ -68,17 +68,62 @@ class PEOPLELIB_PT_panel(bpy.types.Panel):
 
         box.prop(
             scene,
-            "peoplelib_paint_mode",
+            "simplepaint_paint_mode",
             text=""
         )
 
-        if scene.peoplelib_paint_mode == 'SURFACE':
+        if scene.simplepaint_paint_mode == 'SURFACE':
 
             box.prop(
                 scene,
-                "peoplelib_surface",
+                "simplepaint_surface",
                 text="Base Mesh"
             )
+
+        # -------------------------------------------------
+        # ALIGN / ROTATION / SCALE
+        # -------------------------------------------------
+
+        layout.separator()
+
+        box = layout.box()
+
+        box.label(
+            text="Orientation",
+            icon='ORIENTATION_NORMAL'
+        )
+
+        box.prop(
+            scene,
+            "simplepaint_align_mode",
+            text="Align"
+        )
+
+        row = box.row(align=True)
+
+        row.label(text="Random Rotation:")
+        row.prop(
+            scene, "simplepaint_random_rot_x",
+            text="X", toggle=True
+        )
+        row.prop(
+            scene, "simplepaint_random_rot_y",
+            text="Y", toggle=True
+        )
+        row.prop(
+            scene, "simplepaint_random_rot_z",
+            text="Z", toggle=True
+        )
+
+        row = box.row(align=True)
+
+        row.label(text="Random Scale:")
+        row.prop(
+            scene, "simplepaint_scale_min", text="Min"
+        )
+        row.prop(
+            scene, "simplepaint_scale_max", text="Max"
+        )
 
         # -------------------------------------------------
         # BRUSH
@@ -95,20 +140,20 @@ class PEOPLELIB_PT_panel(bpy.types.Panel):
 
         box.prop(
             scene,
-            "peoplelib_brush_size",
+            "simplepaint_brush_size",
             text="Size"
         )
 
         box.prop(
             scene,
-            "peoplelib_density",
+            "simplepaint_density",
             text="Density"
         )
 
         row = box.row(align=True)
 
         paint_op = row.operator(
-            "peoplelib.paint",
+            "simplepaint.paint",
             text="Paint",
             icon='BRUSH_DATA'
         )
@@ -116,7 +161,7 @@ class PEOPLELIB_PT_panel(bpy.types.Panel):
         paint_op.erase = False
 
         erase_op = row.operator(
-            "peoplelib.paint",
+            "simplepaint.paint",
             text="Erase",
             icon='TRASH'
         )
@@ -137,13 +182,13 @@ class PEOPLELIB_PT_panel(bpy.types.Panel):
         )
 
         box.operator(
-            "peoplelib.place_one",
-            text="Place One Character"
+            "simplepaint.place_one",
+            text="Place One"
         )
 
 
 classes = (
-    PEOPLELIB_PT_panel,
+    SIMPLEPAINT_PT_panel,
 )
 
 

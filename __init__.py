@@ -7,7 +7,7 @@ if "bpy" in locals():
         ui,
     ]:
         importlib.reload(mod)
-    print("Add-on Reloaded: BB PeopleLib")
+    print("Add-on Reloaded: BB Simple Paint")
 else:
     import bpy
     from . import (

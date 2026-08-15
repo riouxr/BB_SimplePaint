@@ -1,14 +1,14 @@
 schema_version = "1.0.0"
 
-id = "bb_peoplelib"
-name = "BB PeopleLib"
-version = "1.2.0"
-tagline = "Paint crowd characters onto any surface from a PeopleLib collection"
+id = "bb_simplepaint"
+name = "BB Simple Paint"
+version = "2.0.0"
+tagline = "Paint or place any object as instances onto any surface"
 type = "add-on"
 
 maintainer = "Blender Bob & Claude"
-website = "https://github.com/riouxr/BB_PeopleLib"
-tags = ["Animation", "Object", "Rigging"]
+website = "https://github.com/riouxr/BB_SimplePaint"
+tags = ["Object", "Scene"]
 
 blender_version_min = "4.5.0"
 
