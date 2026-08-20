@@ -128,6 +128,58 @@ def pick_item(source_collection):
 # HIERARCHY DUPLICATION (linked duplicate)
 # =========================================================
 
+def remap_pointer_props(owner, id_map):
+
+    for prop in owner.bl_rna.properties:
+
+        if prop.type != 'POINTER':
+            continue
+
+        if prop.fixed_type.identifier != 'Object':
+            continue
+
+        if prop.is_readonly:
+            continue
+
+        replacement = id_map.get(
+            getattr(owner, prop.identifier, None)
+        )
+
+        if replacement is not None:
+            setattr(owner, prop.identifier, replacement)
+
+
+def remap_constraint(constraint, id_map):
+
+    remap_pointer_props(constraint, id_map)
+
+    for sub_target in getattr(constraint, "targets", []):
+        remap_pointer_props(sub_target, id_map)
+
+
+def remap_object_references(new_obj, id_map):
+
+    """Point copied modifiers and constraints at the copied hierarchy.
+
+    obj.copy() keeps the originals' pointers, so without this an
+    Armature modifier on a painted character still deforms from the
+    source rig and its own bones do nothing.
+    """
+
+    for modifier in new_obj.modifiers:
+        remap_pointer_props(modifier, id_map)
+
+    for constraint in new_obj.constraints:
+        remap_constraint(constraint, id_map)
+
+    if new_obj.pose is not None:
+
+        for pose_bone in new_obj.pose.bones:
+
+            for constraint in pose_bone.constraints:
+                remap_constraint(constraint, id_map)
+
+
 def duplicate_item(context, source_root, placed_collection):
 
     hierarchy = [source_root] + list(
@@ -152,6 +204,8 @@ def duplicate_item(context, source_root, placed_collection):
             new_obj.matrix_parent_inverse = (
                 original.matrix_parent_inverse.copy()
             )
+
+        remap_object_references(new_obj, id_map)
 
     return id_map[source_root]
 
