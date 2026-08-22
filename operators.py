@@ -29,6 +29,98 @@ NAVIGATION_ALT_TYPES = {
 }
 
 
+# Regions that own their own clicks. With region overlap on, the
+# sidebar and toolbar are drawn on top of the viewport's WINDOW region,
+# so testing against WINDOW alone would call them canvas and the brush
+# would eat every click meant for a panel.
+NON_CANVAS_REGION_TYPES = {
+    'HEADER',
+    'TOOL_HEADER',
+    'FOOTER',
+    'HUD',
+    'UI',
+    'TOOLS',
+    'ASSET_SHELF',
+    'ASSET_SHELF_HEADER',
+}
+
+
+def region_contains(region, x, y):
+
+    return (
+        region.x <= x < region.x + region.width
+        and region.y <= y < region.y + region.height
+    )
+
+
+def is_over_canvas(context, event):
+
+    """True when the cursor is over the surface we actually paint on.
+
+    Everything else - the N-panel, the toolbar, a header, another editor
+    entirely - belongs to the UI. Those events have to pass through, or
+    the tool has to be exited before a single slider can be touched.
+    Coordinates are window-space, since the cursor is regularly outside
+    the region the operator was invoked in.
+    """
+
+    area = context.area
+
+    if area is None:
+        return False
+
+    x = event.mouse_x
+    y = event.mouse_y
+
+    window_region = None
+
+    for region in area.regions:
+
+        if region.type == 'WINDOW':
+            window_region = region
+            break
+
+    if window_region is None:
+        return False
+
+    if not region_contains(window_region, x, y):
+        return False
+
+    for region in area.regions:
+
+        if region.type not in NON_CANVAS_REGION_TYPES:
+            continue
+
+        # A collapsed region keeps a 1px stub that would otherwise
+        # carve a dead line out of the edge of the canvas.
+        if region.width <= 1 or region.height <= 1:
+            continue
+
+        if region_contains(region, x, y):
+            return False
+
+    return True
+
+
+def pass_to_ui(operator, context, event):
+
+    """Hand the event to the UI and stand the brush down."""
+
+    # Only the paint brush strokes; Place One tracks state instead.
+    if hasattr(operator, "painting"):
+        operator.painting = False
+
+    # Drop the overlay rather than leave a brush circle parked on top
+    # of the panel the cursor just moved onto.
+    if operator.mouse_pos is not None:
+
+        operator.mouse_pos = None
+
+        context.area.tag_redraw()
+
+    return {'PASS_THROUGH'}
+
+
 def is_navigation_event(event):
 
     """Events the viewport has to keep while a brush is running.
@@ -388,6 +480,9 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
             self.painting = False
 
             return {'PASS_THROUGH'}
+
+        if event.type != 'ESC' and not is_over_canvas(context, event):
+            return pass_to_ui(self, context, event)
 
         if event.type == 'Z' and event.ctrl and event.value == 'PRESS':
 
@@ -874,8 +969,13 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
 
         context.area.tag_redraw()
 
-        if is_navigation_event(event) and self.state != 'DRAGGING':
-            return {'PASS_THROUGH'}
+        if self.state != 'DRAGGING':
+
+            if is_navigation_event(event):
+                return {'PASS_THROUGH'}
+
+            if event.type != 'ESC' and not is_over_canvas(context, event):
+                return pass_to_ui(self, context, event)
 
         if event.type == 'Z' and event.ctrl and event.value == 'PRESS':
 
