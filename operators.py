@@ -9,6 +9,61 @@ from . import preview, utils
 
 
 # =========================================================
+# VIEWPORT NAVIGATION
+# =========================================================
+
+NAVIGATION_EVENT_TYPES = {
+    'MIDDLEMOUSE',
+    'TRACKPADPAN',
+    'TRACKPADZOOM',
+    'MOUSEROTATE',
+    'MOUSESMARTZOOM',
+}
+
+NAVIGATION_ALT_TYPES = {
+    'LEFTMOUSE',
+    'RIGHTMOUSE',
+    'MOUSEMOVE',
+    'WHEELUPMOUSE',
+    'WHEELDOWNMOUSE',
+}
+
+
+def is_navigation_event(event):
+
+    """Events the viewport has to keep while a brush is running.
+
+    Alt is what the Industry Compatible keymap and the emulated
+    3-button mouse use for orbit, pan and zoom, so an Alt-held event
+    belongs to the viewport, not to the brush. Middle mouse and the
+    trackpad gestures cover the default keymap.
+    """
+
+    if event.type in NAVIGATION_EVENT_TYPES:
+        return True
+
+    return event.alt and event.type in NAVIGATION_ALT_TYPES
+
+
+# =========================================================
+# UNDO
+# =========================================================
+
+def push_start_undo(context):
+
+    """Snapshot the scene before the tool changes anything.
+
+    Each stroke pushes its own step, but the *first* Ctrl+Z needs a
+    step holding the pre-tool state to land on. Without one it falls
+    back to whatever unrelated step happened to be on the stack when
+    the tool was started, so the undo appears to skip the painting and
+    revert earlier work instead.
+    """
+
+    bpy.ops.ed.undo_push(message="Simple Paint Start")
+
+
+# =========================================================
 # BRUSH OVERLAY
 # =========================================================
 
@@ -219,6 +274,8 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
         self.rebuild_hash(context)
 
+        push_start_undo(context)
+
         self.mouse_pos = (
             event.mouse_region_x,
             event.mouse_region_y,
@@ -324,6 +381,13 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
         if self.resizing:
             return self.modal_resize(context, event)
+
+        if is_navigation_event(event):
+
+            # A stroke can't survive the viewport moving under it.
+            self.painting = False
+
+            return {'PASS_THROUGH'}
 
         if event.type == 'Z' and event.ctrl and event.value == 'PRESS':
 
@@ -778,6 +842,8 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
             context
         )
 
+        push_start_undo(context)
+
         self.mouse_pos = (
             event.mouse_region_x,
             event.mouse_region_y,
@@ -807,6 +873,9 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
     def modal(self, context, event):
 
         context.area.tag_redraw()
+
+        if is_navigation_event(event) and self.state != 'DRAGGING':
+            return {'PASS_THROUGH'}
 
         if event.type == 'Z' and event.ctrl and event.value == 'PRESS':
 
