@@ -231,6 +231,26 @@ def duplicate_item(context, source_root, placed_collection):
     return id_map[source_root]
 
 
+def find_placed_root(obj, placed_collection):
+
+    """Walk up to the top of a placed item's hierarchy.
+
+    Returns None if the object (or its topmost parent) isn't actually
+    a member of the placed collection - e.g. a surface mesh caught up
+    in the same selection.
+    """
+
+    current = obj
+
+    while current.parent is not None:
+        current = current.parent
+
+    if current.name not in placed_collection.objects:
+        return None
+
+    return current
+
+
 def delete_hierarchy(root):
 
     if root is None:

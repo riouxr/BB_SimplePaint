@@ -1358,10 +1358,107 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
         return placed
 
 
+class SIMPLEPAINT_OT_swap(bpy.types.Operator):
+
+    bl_idname = "simplepaint.swap"
+    bl_label = "Swap"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    bl_description = (
+        "Replace every other selected placed item with a copy of "
+        "the active (highlighted) one, each at its own position"
+    )
+
+    @classmethod
+    def poll(cls, context):
+
+        if context.active_object is None:
+
+            cls.poll_message_set(
+                "Select a source item and one or more targets"
+            )
+
+            return False
+
+        if len(context.selected_objects) < 2:
+
+            cls.poll_message_set(
+                "Select target item(s) in addition to the source"
+            )
+
+            return False
+
+        return True
+
+    def execute(self, context):
+
+        placed_collection = utils.get_placed_collection(context)
+
+        source_root = utils.find_placed_root(
+            context.active_object, placed_collection
+        )
+
+        if source_root is None:
+
+            self.report(
+                {'ERROR'}, "Active object is not a placed item"
+            )
+
+            return {'CANCELLED'}
+
+        targets = []
+        seen_names = set()
+
+        for obj in context.selected_objects:
+
+            root = utils.find_placed_root(obj, placed_collection)
+
+            if root is None or root == source_root:
+                continue
+
+            if root.name in seen_names:
+                continue
+
+            seen_names.add(root.name)
+            targets.append(root)
+
+        if not targets:
+
+            self.report(
+                {'ERROR'}, "No valid target item(s) selected"
+            )
+
+            return {'CANCELLED'}
+
+        for target in targets:
+
+            matrix = target.matrix_world.copy()
+
+            new_root = utils.duplicate_item(
+                context, source_root, placed_collection
+            )
+
+            new_root.matrix_world = matrix
+
+            utils.delete_hierarchy(target)
+
+            new_root.select_set(True)
+
+        context.view_layer.objects.active = source_root
+        source_root.select_set(True)
+
+        self.report(
+            {'INFO'}, f"Swapped {len(targets)} item(s)"
+        )
+
+        return {'FINISHED'}
+
+
 classes = (
     SIMPLEPAINT_OT_paint,
     SIMPLEPAINT_OT_place_one,
     SIMPLEPAINT_OT_flood,
+    SIMPLEPAINT_OT_swap,
 )
 
 

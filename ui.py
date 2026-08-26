@@ -382,6 +382,11 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
             text="Place One"
         )
 
+        box.operator(
+            "simplepaint.swap",
+            text="Swap"
+        )
+
 
 classes = (
     SIMPLEPAINT_PT_panel,
