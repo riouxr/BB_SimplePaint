@@ -42,6 +42,27 @@ def get_placed_collection(context):
     return collection
 
 
+def is_datablock_valid(datablock):
+
+    """False once undo has swapped this datablock out from under us.
+
+    Undo replaces datablocks wholesale, so any reference held across
+    events can end up pointing at freed RNA. Touching one raises
+    ReferenceError rather than returning None, so it has to be probed.
+    """
+
+    if datablock is None:
+        return False
+
+    try:
+        datablock.name
+
+    except ReferenceError:
+        return False
+
+    return True
+
+
 def is_library_object(obj, source_collection, placed_collection):
 
     if source_collection is not None:

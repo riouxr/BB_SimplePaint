@@ -121,6 +121,35 @@ def pass_to_ui(operator, context, event):
     return {'PASS_THROUGH'}
 
 
+def resync_collections(operator, context):
+
+    """Re-resolve references an undo may have invalidated.
+
+    The UI stays live while a brush runs, so an undo can happen behind
+    the tool's back - from the Edit menu, or Ctrl+Z with the cursor
+    over a panel. Both leave the collections the tool cached at invoke
+    pointing at freed RNA, and the next raycast dies on them.
+    """
+
+    if not utils.is_datablock_valid(operator.placed_collection):
+
+        operator.placed_collection = utils.get_placed_collection(
+            context
+        )
+
+        # The hash was built from objects that no longer exist.
+        if hasattr(operator, "rebuild_hash"):
+            operator.rebuild_hash(context)
+
+        preview.clear_cache()
+
+    if not utils.is_datablock_valid(operator.source_collection):
+
+        operator.source_collection = utils.get_source_collection(
+            context
+        )
+
+
 def is_navigation_event(event):
 
     """Events the viewport has to keep while a brush is running.
@@ -488,6 +517,8 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
     def modal(self, context, event):
 
         context.area.tag_redraw()
+
+        resync_collections(self, context)
 
         if self.resizing:
             return self.modal_resize(context, event)
@@ -986,6 +1017,24 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
     def modal(self, context, event):
 
         context.area.tag_redraw()
+
+        resync_collections(self, context)
+
+        # An undo behind our back can take the dragged item with it.
+        if self.new_root is not None:
+
+            if not utils.is_datablock_valid(self.new_root):
+
+                self.new_root = None
+                self.state = 'WAITING'
+
+        if self.item_source_root is not None:
+
+            if not utils.is_datablock_valid(self.item_source_root):
+
+                self.item_source_root = None
+                self.new_root = None
+                self.state = 'WAITING'
 
         if self.state != 'DRAGGING':
 
