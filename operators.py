@@ -107,8 +107,8 @@ def pass_to_ui(operator, context, event):
     """Hand the event to the UI and stand the brush down."""
 
     # Only the paint brush strokes; Place One tracks state instead.
-    if hasattr(operator, "painting"):
-        operator.painting = False
+    if hasattr(operator, "end_stroke"):
+        operator.end_stroke(context)
 
     # Drop the overlay rather than leave a brush circle parked on top
     # of the panel the cursor just moved onto.
@@ -414,6 +414,24 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
         bpy.ops.ed.undo_push(message=label)
 
+    def end_stroke(self, context):
+
+        """Close off a stroke wherever it happens to end.
+
+        A stroke is not always ended by releasing over the canvas: the
+        cursor can move onto a panel, the viewport can be navigated, or
+        the tool can be exited outright. Every one of those has to push
+        the step, otherwise the items just painted have no undo step of
+        their own and Ctrl+Z looks like it does nothing at all.
+        """
+
+        self.painting = False
+
+        self.push_undo(
+            context,
+            "Erase Items" if self.erase else "Paint Items"
+        )
+
     def run_undo(self, context, redo=False):
 
         self.painting = False
@@ -477,7 +495,7 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
         if is_navigation_event(event):
 
             # A stroke can't survive the viewport moving under it.
-            self.painting = False
+            self.end_stroke(context)
 
             return {'PASS_THROUGH'}
 
@@ -521,12 +539,7 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
             elif event.value == 'RELEASE':
 
-                self.painting = False
-
-                self.push_undo(
-                    context,
-                    "Erase Items" if self.erase else "Paint Items"
-                )
+                self.end_stroke(context)
 
         elif event.type == 'TIMER':
 
@@ -859,6 +872,10 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
     def finish(self, context):
 
+        # Esc, right mouse or Tab can land mid-stroke; that painting
+        # still needs a step of its own.
+        self.end_stroke(context)
+
         if self.timer is not None:
 
             context.window_manager.event_timer_remove(
@@ -960,7 +977,8 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
         context.area.header_text_set(
             "BB Simple Paint [Place One]  |  LMB: place & drag, "
             "release to drop, repeat for more  |  "
-            "Shift+F: Flood  |  Tab: Paint  |  RMB/Esc: Exit"
+            "E: Erase  |  Shift+F: Flood  |  Tab: Paint  |  "
+            "RMB/Esc: Exit"
         )
 
         return {'RUNNING_MODAL'}
@@ -1058,6 +1076,24 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
                 self.state = 'WAITING'
 
                 bpy.ops.ed.undo_push(message="Place Item")
+
+        elif event.type == 'E' and event.value == 'PRESS':
+
+            # There is nothing to erase in Place One, so E means the
+            # same thing it does everywhere else in the add-on: switch
+            # to the brush, already in Erase.
+            if self.new_root is not None:
+                utils.delete_hierarchy(self.new_root)
+                self.new_root = None
+
+            self.finish(context)
+
+            bpy.ops.simplepaint.paint('INVOKE_DEFAULT', erase=True)
+
+            if self.placed_count > 0:
+                return {'FINISHED'}
+
+            return {'CANCELLED'}
 
         elif event.type == 'TAB' and event.value == 'PRESS':
 
