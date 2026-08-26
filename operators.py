@@ -305,11 +305,25 @@ def validate_prerequisites(operator, context):
 
         if not targets:
 
-            operator.report(
-                {'ERROR'},
-                "Select one or more surface objects first, "
-                "or switch Paint On to 'Any Surface'"
+            conflicts = utils.get_source_collection_conflicts(
+                context, source_collection
             )
+
+            if conflicts:
+
+                operator.report(
+                    {'ERROR'},
+                    "Selected surface is in the source collection - "
+                    "move it out or pick a different surface"
+                )
+
+            else:
+
+                operator.report(
+                    {'ERROR'},
+                    "Select one or more surface objects first, "
+                    "or switch Paint On to 'Any Surface'"
+                )
 
             return None
 

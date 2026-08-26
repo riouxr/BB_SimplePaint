@@ -83,6 +83,24 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
                 )
             )
 
+            conflicts = utils.get_source_collection_conflicts(
+                context, source_collection
+            )
+
+            if conflicts:
+
+                names = ", ".join(
+                    obj.name for obj in conflicts[:3]
+                )
+
+                if len(conflicts) > 3:
+                    names += f" (+{len(conflicts) - 3})"
+
+                box.label(
+                    text=f"{names} is in the source collection",
+                    icon='ERROR'
+                )
+
             if targets:
 
                 names = ", ".join(
@@ -97,7 +115,7 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
                     icon='RESTRICT_SELECT_OFF'
                 )
 
-            else:
+            elif not conflicts:
 
                 box.label(
                     text="Select mesh object(s) as surface",

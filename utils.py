@@ -90,6 +90,27 @@ def get_surface_targets(context, source_collection, placed_collection):
     ]
 
 
+def get_source_collection_conflicts(context, source_collection):
+
+    """Selected mesh objects that are also members of the source
+    collection.
+
+    A surface picked from the same collection as the paint items
+    silently vanishes from get_surface_targets, so callers use this
+    to explain why rather than just saying "nothing selected".
+    """
+
+    if source_collection is None:
+        return []
+
+    return [
+        obj
+        for obj in context.selected_objects
+        if obj.type == 'MESH'
+        and obj.name in source_collection.objects
+    ]
+
+
 # =========================================================
 # ITEM PICKER (anti-repeat)
 # =========================================================
