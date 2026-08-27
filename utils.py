@@ -777,6 +777,21 @@ class VertexGrid:
             (position, normal)
         )
 
+    def nearest(self, center, radius):
+
+        closest = None
+        closest_distance = None
+
+        for position, normal in self.near(center, radius):
+
+            distance = (position - center).length_squared
+
+            if closest_distance is None or distance < closest_distance:
+                closest = (position, normal)
+                closest_distance = distance
+
+        return closest
+
     def near(self, center, radius):
 
         if radius <= 0.0:

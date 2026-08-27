@@ -14,6 +14,11 @@ from . import preview, utils
 # what stops each pass stacking another item on them.
 VERTEX_TAKEN_RADIUS = 1e-4
 
+# Place One draws a smaller circle than the paint brush, and that
+# circle is what the user is aiming with, so it is also how far the
+# snap reaches for a vertex.
+PLACE_ONE_BRUSH_FACTOR = 0.3
+
 
 # =========================================================
 # VIEWPORT NAVIGATION
@@ -126,6 +131,53 @@ def pass_to_ui(operator, context, event):
         context.area.tag_redraw()
 
     return {'PASS_THROUGH'}
+
+
+def vertex_grid_for(operator, context, obj):
+
+    if not utils.is_datablock_valid(operator.vertex_grid_object):
+        operator.vertex_grid = None
+
+    if operator.vertex_grid is None or operator.vertex_grid_object is not obj:
+
+        operator.vertex_grid = utils.build_vertex_grid(
+            context,
+            obj,
+            context.scene.simplepaint_brush_size
+        )
+
+        operator.vertex_grid_object = obj
+
+    return operator.vertex_grid
+
+
+def snap_hit_to_vertex(operator, context, hit, radius):
+
+    """Pull a hit onto the surface's nearest vertex, when asked for.
+
+    Place One puts down one item at a time, so Paint on Verts means
+    that item lands on the vertex nearest the cursor rather than
+    wherever the ray happened to strike. With no vertex within reach
+    the hit is left alone, so the tool still works out in the middle
+    of a face.
+    """
+
+    location, normal, hit_obj = hit
+
+    if not context.scene.simplepaint_paint_on_verts:
+        return location, normal
+
+    grid = vertex_grid_for(operator, context, hit_obj)
+
+    if grid is None:
+        return location, normal
+
+    found = grid.nearest(location, radius)
+
+    if found is None:
+        return location, normal
+
+    return found
 
 
 def resync_collections(operator, context):
@@ -912,23 +964,6 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
             self.stamp(context, location, sample_normal)
 
-    def vertex_grid_for(self, context, obj):
-
-        if not utils.is_datablock_valid(self.vertex_grid_object):
-            self.vertex_grid = None
-
-        if self.vertex_grid is None or self.vertex_grid_object is not obj:
-
-            self.vertex_grid = utils.build_vertex_grid(
-                context,
-                obj,
-                context.scene.simplepaint_brush_size
-            )
-
-            self.vertex_grid_object = obj
-
-        return self.vertex_grid
-
     def stamp_on_vertices(self, context, center, hit_obj):
 
         """One item per surface vertex under the brush.
@@ -939,7 +974,7 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
         many of its vertices are reached at once.
         """
 
-        grid = self.vertex_grid_for(context, hit_obj)
+        grid = vertex_grid_for(self, context, hit_obj)
 
         if grid is None:
             return
@@ -1052,6 +1087,9 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
         self.item_source_root = None
         self.item_random_quat = None
         self.item_scale_mult = Vector((1.0, 1.0, 1.0))
+
+        self.vertex_grid = None
+        self.vertex_grid_object = None
 
         self.source_collection = validate_prerequisites(
             self, context
@@ -1175,7 +1213,10 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
 
                 if hit is not None:
 
-                    location, normal, hit_obj = hit
+                    location, normal = snap_hit_to_vertex(
+                        self, context, hit,
+                        self.snap_radius(context)
+                    )
 
                     self.new_root.matrix_world = (
                         utils.item_transform(
@@ -1269,8 +1310,16 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
             self.pixel_radius = utils.world_radius_to_pixels(
                 context,
                 hit[0],
-                context.scene.simplepaint_brush_size * 0.3
+                context.scene.simplepaint_brush_size
+                * PLACE_ONE_BRUSH_FACTOR
             )
+
+    def snap_radius(self, context):
+
+        return (
+            context.scene.simplepaint_brush_size
+            * PLACE_ONE_BRUSH_FACTOR
+        )
 
     def start_drag(self, context):
 
@@ -1290,7 +1339,14 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
 
             return
 
-        location, normal, hit_obj = hit
+        # A fresh grid per placement: the surface may have been
+        # edited or moved since the last one.
+        self.vertex_grid = None
+        self.vertex_grid_object = None
+
+        location, normal = snap_hit_to_vertex(
+            self, context, hit, self.snap_radius(context)
+        )
 
         source_root = utils.pick_item(
             self.source_collection
