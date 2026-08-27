@@ -748,6 +748,129 @@ class SpatialHash:
         return False
 
 
+class VertexGrid:
+
+    """A surface's world-space vertices, bucketed for radius lookups.
+
+    Built once per stroke rather than walked per sample: a dense mesh
+    has far too many vertices to scan on every timer tick.
+    """
+
+    def __init__(self, cell_size):
+
+        self.cell_size = max(cell_size, 0.001)
+        self.cells = {}
+
+    def _key(self, pos):
+
+        return (
+            math.floor(pos.x / self.cell_size),
+            math.floor(pos.y / self.cell_size),
+            math.floor(pos.z / self.cell_size),
+        )
+
+    def add(self, position, normal):
+
+        key = self._key(position)
+
+        self.cells.setdefault(key, []).append(
+            (position, normal)
+        )
+
+    def near(self, center, radius):
+
+        if radius <= 0.0:
+            return []
+
+        key = self._key(center)
+        radius_sq = radius * radius
+
+        span = int(math.ceil(radius / self.cell_size))
+
+        found = []
+
+        for dx in range(-span, span + 1):
+            for dy in range(-span, span + 1):
+                for dz in range(-span, span + 1):
+
+                    neighbor = (
+                        key[0] + dx,
+                        key[1] + dy,
+                        key[2] + dz,
+                    )
+
+                    for position, normal in self.cells.get(
+                        neighbor, ()
+                    ):
+
+                        if (
+                            (position - center).length_squared
+                            <= radius_sq
+                        ):
+                            found.append((position, normal))
+
+        return found
+
+
+def evaluated_vertices(context, obj, max_points=None):
+
+    """One surface's evaluated vertices, in world space.
+
+    Evaluated rather than raw, so modifiers count: painting onto a
+    subdivided or displaced surface has to follow the vertices that
+    are actually on screen, not the ones in the base cage.
+    """
+
+    if obj is None or obj.type != 'MESH':
+        return []
+
+    depsgraph = context.evaluated_depsgraph_get()
+    obj_eval = obj.evaluated_get(depsgraph)
+
+    try:
+        mesh = obj_eval.to_mesh()
+
+    except RuntimeError:
+        return []
+
+    if mesh is None:
+        return []
+
+    matrix = obj_eval.matrix_world
+    normal_matrix = matrix.to_3x3().inverted_safe().transposed()
+
+    points = []
+
+    for vertex in mesh.vertices:
+
+        if max_points is not None and len(points) >= max_points:
+            break
+
+        points.append((
+            matrix @ vertex.co,
+            (normal_matrix @ vertex.normal).normalized(),
+        ))
+
+    obj_eval.to_mesh_clear()
+
+    return points
+
+
+def build_vertex_grid(context, obj, cell_size):
+
+    points = evaluated_vertices(context, obj)
+
+    if not points:
+        return None
+
+    grid = VertexGrid(cell_size)
+
+    for position, normal in points:
+        grid.add(position, normal)
+
+    return grid
+
+
 def build_spatial_hash(placed_collection, cell_size):
 
     spatial_hash = SpatialHash(cell_size)

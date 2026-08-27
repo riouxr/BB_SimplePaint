@@ -8,6 +8,13 @@ from gpu_extras.batch import batch_for_shader
 from . import preview, utils
 
 
+# A painted item sits exactly on the vertex it came from, so a tiny
+# radius is enough to recognise a vertex that is already taken. The
+# brush passes over the same vertices on every timer tick, and this is
+# what stops each pass stacking another item on them.
+VERTEX_TAKEN_RADIUS = 1e-4
+
+
 # =========================================================
 # VIEWPORT NAVIGATION
 # =========================================================
@@ -381,6 +388,9 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
         self.source_collection = None
         self.placed_collection = None
 
+        self.vertex_grid = None
+        self.vertex_grid_object = None
+
         self.resizing = False
         self.resize_start_mouse_x = None
         self.resize_start_size = None
@@ -447,6 +457,12 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
             self.placed_collection,
             context.scene.simplepaint_spacing
         )
+
+        # Rebuilt at the start of every stroke and after an undo, which
+        # is also exactly when the surface may have moved or been
+        # edited under us.
+        self.vertex_grid = None
+        self.vertex_grid_object = None
 
     def push_undo(self, context, label):
 
@@ -842,6 +858,12 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
         center, normal, hit_obj = hit
 
+        if context.scene.simplepaint_paint_on_verts:
+
+            self.stamp_on_vertices(context, center, hit_obj)
+
+            return
+
         brush_size = context.scene.simplepaint_brush_size
         spacing = context.scene.simplepaint_spacing
 
@@ -889,6 +911,49 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
                 continue
 
             self.stamp(context, location, sample_normal)
+
+    def vertex_grid_for(self, context, obj):
+
+        if not utils.is_datablock_valid(self.vertex_grid_object):
+            self.vertex_grid = None
+
+        if self.vertex_grid is None or self.vertex_grid_object is not obj:
+
+            self.vertex_grid = utils.build_vertex_grid(
+                context,
+                obj,
+                context.scene.simplepaint_brush_size
+            )
+
+            self.vertex_grid_object = obj
+
+        return self.vertex_grid
+
+    def stamp_on_vertices(self, context, center, hit_obj):
+
+        """One item per surface vertex under the brush.
+
+        Positions come from the surface itself rather than from
+        dart-throwing, so Spacing has nothing to say about them - the
+        mesh decides where items land, and the brush only decides how
+        many of its vertices are reached at once.
+        """
+
+        grid = self.vertex_grid_for(context, hit_obj)
+
+        if grid is None:
+            return
+
+        brush_size = context.scene.simplepaint_brush_size
+
+        for location, normal in grid.near(center, brush_size):
+
+            if self.spatial_hash.is_too_close(
+                location, VERTEX_TAKEN_RADIUS
+            ):
+                continue
+
+            self.stamp(context, location, normal)
 
     def stamp(self, context, location, normal):
 

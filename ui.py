@@ -73,6 +73,12 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
             text=""
         )
 
+        box.prop(
+            scene,
+            "simplepaint_paint_on_verts",
+            text="Paint on Verts"
+        )
+
         if scene.simplepaint_paint_mode == 'SURFACE':
 
             targets = utils.get_surface_targets(
@@ -315,7 +321,11 @@ class SIMPLEPAINT_PT_panel(bpy.types.Panel):
             icon='BRUSH_DATA'
         )
 
-        box.prop(
+        spacing_row = box.row()
+
+        spacing_row.enabled = not scene.simplepaint_paint_on_verts
+
+        spacing_row.prop(
             scene,
             "simplepaint_spacing",
             text="Spacing"

@@ -124,6 +124,19 @@ def register():
         )
     )
 
+    bpy.types.Scene.simplepaint_paint_on_verts = (
+        bpy.props.BoolProperty(
+            name="Paint on Verts",
+            description=(
+                "Place items on the surface's vertices instead of "
+                "anywhere under the brush. The mesh decides where "
+                "items land, so Spacing no longer applies"
+            ),
+            default=False,
+            update=refresh_preview
+        )
+    )
+
     bpy.types.Scene.simplepaint_brush_size = (
         bpy.props.FloatProperty(
             name="Brush Size",
@@ -414,6 +427,7 @@ def unregister():
 
     del bpy.types.Scene.simplepaint_collection
     del bpy.types.Scene.simplepaint_paint_mode
+    del bpy.types.Scene.simplepaint_paint_on_verts
     del bpy.types.Scene.simplepaint_brush_size
     del bpy.types.Scene.simplepaint_spacing
     del bpy.types.Scene.simplepaint_show_preview

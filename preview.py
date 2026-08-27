@@ -91,6 +91,7 @@ def build_cache_key(context, targets):
     # draw instead of being resampled.
     return (
         round(scene.simplepaint_spacing, 6),
+        scene.simplepaint_paint_on_verts,
         tuple(
             (
                 obj.name,
@@ -110,7 +111,9 @@ def rebuild_cache(context, targets):
 
     _cache_entries = {}
 
-    spacing = context.scene.simplepaint_spacing
+    scene = context.scene
+
+    spacing = scene.simplepaint_spacing
 
     budget = MAX_PREVIEW_POINTS
 
@@ -119,14 +122,25 @@ def rebuild_cache(context, targets):
         if budget <= 0:
             break
 
-        triangles = utils.get_evaluated_triangles(context, obj)
+        # Painting on verts ignores spacing entirely, so previewing a
+        # spacing pattern would show dots nowhere near where items
+        # would actually land.
+        if scene.simplepaint_paint_on_verts:
 
-        if not triangles:
-            continue
+            samples = utils.evaluated_vertices(
+                context, obj, max_points=budget
+            )
 
-        samples = utils.sample_triangles(
-            triangles, spacing, max_points=budget
-        )
+        else:
+
+            triangles = utils.get_evaluated_triangles(context, obj)
+
+            if not triangles:
+                continue
+
+            samples = utils.sample_triangles(
+                triangles, spacing, max_points=budget
+            )
 
         if not samples:
             continue
