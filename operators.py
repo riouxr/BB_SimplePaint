@@ -1437,13 +1437,18 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
             placed_collection, spacing
         )
 
+        # Shared across every surface in one flood, so two surfaces
+        # meeting at a seam do not both claim the vertices along it.
+        occupied = utils.occupied_vertex_keys(placed_collection)
+
         total_placed = 0
 
         for obj in targets:
 
             total_placed += self.flood_object(
                 context, obj, source_collection,
-                placed_collection, spatial_hash, spacing
+                placed_collection, spatial_hash, spacing,
+                occupied
             )
 
         self.report(
@@ -1455,17 +1460,40 @@ class SIMPLEPAINT_OT_flood(bpy.types.Operator):
 
     def flood_object(
         self, context, obj, source_collection,
-        placed_collection, spatial_hash, spacing
+        placed_collection, spatial_hash, spacing,
+        occupied
     ):
 
-        triangles = utils.get_evaluated_triangles(context, obj)
+        if context.scene.simplepaint_paint_on_verts:
 
-        if not triangles:
-            return 0
+            # Every vertex of the surface, not a spacing pattern over
+            # it: flooding has to agree with what the brush would do
+            # over the same ground.
+            samples = []
 
-        samples = utils.sample_triangles(
-            triangles, spacing, spatial_hash=spatial_hash
-        )
+            for position, normal in utils.evaluated_vertices(
+                context, obj
+            ):
+
+                key = utils.vertex_key(position)
+
+                if key in occupied:
+                    continue
+
+                occupied.add(key)
+
+                samples.append((position, normal))
+
+        else:
+
+            triangles = utils.get_evaluated_triangles(context, obj)
+
+            if not triangles:
+                return 0
+
+            samples = utils.sample_triangles(
+                triangles, spacing, spatial_hash=spatial_hash
+            )
 
         placed = 0
 

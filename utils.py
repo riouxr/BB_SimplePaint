@@ -886,6 +886,34 @@ def build_vertex_grid(context, obj, cell_size):
     return grid
 
 
+# Vertex positions are compared by rounded key rather than by
+# distance. Flood looks at every vertex of a whole surface at once, so
+# the test has to be O(1) per vertex; the tolerance this implies is
+# well under a tenth of a millimetre, which is only ever "the same
+# vertex" anyway.
+VERTEX_KEY_PLACES = 4
+
+
+def vertex_key(position):
+
+    return (
+        round(position.x, VERTEX_KEY_PLACES),
+        round(position.y, VERTEX_KEY_PLACES),
+        round(position.z, VERTEX_KEY_PLACES),
+    )
+
+
+def occupied_vertex_keys(placed_collection):
+
+    """Where items already stand, for skipping vertices twice over."""
+
+    return {
+        vertex_key(obj.matrix_world.translation)
+        for obj in placed_collection.objects
+        if obj.parent is None
+    }
+
+
 def build_spatial_hash(placed_collection, cell_size):
 
     spatial_hash = SpatialHash(cell_size)
