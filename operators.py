@@ -243,6 +243,55 @@ def push_start_undo(context):
     bpy.ops.ed.undo_push(message="Simple Paint Start")
 
 
+def find_keymap_items(context, idname):
+
+    """Every active keymap item bound to an operator, user hotkeys included.
+
+    The tool used to hardcode Ctrl+Z/Ctrl+Shift+Z, which breaks the
+    moment someone rebinds Undo or Redo to something else - the new
+    key falls through to the modal's own catch-all RUNNING_MODAL
+    return and never reaches Blender's keymap at all. Reading the
+    live keymap instead means whatever the user has Undo/Redo bound
+    to keeps working while the brush is running.
+    """
+
+    items = []
+
+    for km in context.window_manager.keyconfigs.user.keymaps:
+
+        for kmi in km.keymap_items:
+
+            if kmi.active and kmi.idname == idname:
+                items.append(kmi)
+
+    return items
+
+
+def event_matches_keymap_items(event, kmi_list):
+
+    for kmi in kmi_list:
+
+        if kmi.type != event.type:
+            continue
+
+        if kmi.value != 'ANY' and kmi.value != event.value:
+            continue
+
+        if not kmi.any:
+
+            if (
+                kmi.ctrl != event.ctrl
+                or kmi.shift != event.shift
+                or kmi.alt != event.alt
+                or kmi.oskey != event.oskey
+            ):
+                continue
+
+        return True
+
+    return False
+
+
 # =========================================================
 # BRUSH OVERLAY
 # =========================================================
@@ -451,6 +500,10 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
         self.spacing_adjust = False
         self.preview_was_on = False
         self.stroke_changed = False
+        self.pending_undo_refresh = False
+
+        self.undo_kmis = find_keymap_items(context, "ed.undo")
+        self.redo_kmis = find_keymap_items(context, "ed.redo")
 
         self.placed_collection = utils.get_placed_collection(
             context
@@ -543,35 +596,6 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
             "Erase Items" if self.erase else "Paint Items"
         )
 
-    def run_undo(self, context, redo=False):
-
-        self.painting = False
-        self.stroke_changed = False
-
-        try:
-
-            if redo:
-                bpy.ops.ed.redo()
-            else:
-                bpy.ops.ed.undo()
-
-        except RuntimeError:
-            return
-
-        # Undo swaps datablocks out, so every reference held across
-        # the call has to be looked up again rather than reused.
-        self.placed_collection = utils.get_placed_collection(
-            context
-        )
-
-        self.source_collection = utils.get_source_collection(
-            context
-        )
-
-        self.rebuild_hash(context)
-
-        preview.clear_cache()
-
     def update_header(self, context):
 
         mode = "Erase" if self.erase else "Paint"
@@ -602,6 +626,26 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
 
         resync_collections(self, context)
 
+        # PASS_THROUGH-ed Ctrl+Z/Ctrl+Shift+Z is handled by Blender's
+        # own keymap after this call returns, so the undo/redo itself
+        # has not happened yet when the event is seen - the refresh has
+        # to wait for the next event, once the real undo has landed.
+        if self.pending_undo_refresh:
+
+            self.pending_undo_refresh = False
+
+            self.placed_collection = utils.get_placed_collection(
+                context
+            )
+
+            self.source_collection = utils.get_source_collection(
+                context
+            )
+
+            self.rebuild_hash(context)
+
+            preview.clear_cache()
+
         if self.resizing:
             return self.modal_resize(context, event)
 
@@ -615,11 +659,27 @@ class SIMPLEPAINT_OT_paint(bpy.types.Operator):
         if event.type != 'ESC' and not is_over_canvas(context, event):
             return pass_to_ui(self, context, event)
 
-        if event.type == 'Z' and event.ctrl and event.value == 'PRESS':
+        if event_matches_keymap_items(
+            event, self.undo_kmis
+        ) or event_matches_keymap_items(
+            event, self.redo_kmis
+        ):
 
-            self.run_undo(context, redo=event.shift)
+            # Calling bpy.ops.ed.undo()/redo() directly from inside a
+            # running modal operator is unreliable - the memfile undo
+            # snapshot doesn't account for this operator's own live
+            # modal state, so the step it lands on can be wrong or the
+            # call can silently do nothing. Close off the stroke and
+            # let Blender's own Undo/Redo keymap handle it instead,
+            # exactly like an undo triggered from the Edit menu or with
+            # the cursor over a panel. resync_collections() already
+            # recovers the cached references on the very next event
+            # either way.
+            self.end_stroke(context)
 
-            return {'RUNNING_MODAL'}
+            self.pending_undo_refresh = True
+
+            return {'PASS_THROUGH'}
 
         if event.type == 'MOUSEMOVE':
 
@@ -1091,6 +1151,11 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
         self.vertex_grid = None
         self.vertex_grid_object = None
 
+        self.pending_undo_refresh = False
+
+        self.undo_kmis = find_keymap_items(context, "ed.undo")
+        self.redo_kmis = find_keymap_items(context, "ed.redo")
+
         self.source_collection = validate_prerequisites(
             self, context
         )
@@ -1137,6 +1202,24 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
 
         resync_collections(self, context)
 
+        # PASS_THROUGH-ed Ctrl+Z/Ctrl+Shift+Z is handled by Blender's
+        # own keymap after this call returns, so the undo/redo itself
+        # has not happened yet when the event is seen - the refresh has
+        # to wait for the next event, once the real undo has landed.
+        if self.pending_undo_refresh:
+
+            self.pending_undo_refresh = False
+
+            self.placed_collection = utils.get_placed_collection(
+                context
+            )
+
+            self.source_collection = utils.get_source_collection(
+                context
+            )
+
+            preview.clear_cache()
+
         # An undo behind our back can take the dragged item with it.
         if self.new_root is not None:
 
@@ -1161,7 +1244,11 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
             if event.type != 'ESC' and not is_over_canvas(context, event):
                 return pass_to_ui(self, context, event)
 
-        if event.type == 'Z' and event.ctrl and event.value == 'PRESS':
+        if event_matches_keymap_items(
+            event, self.undo_kmis
+        ) or event_matches_keymap_items(
+            event, self.redo_kmis
+        ):
 
             # Undoing mid-drag would leave a dangling reference to an
             # item the undo may have just removed.
@@ -1171,27 +1258,13 @@ class SIMPLEPAINT_OT_place_one(bpy.types.Operator):
                 self.new_root = None
                 self.state = 'WAITING'
 
-            try:
+            # Calling bpy.ops.ed.undo()/redo() directly from inside a
+            # running modal operator is unreliable (see the paint
+            # tool's modal() for the full reasoning) - pass the event
+            # through to Blender's own Edit > Undo keymap instead.
+            self.pending_undo_refresh = True
 
-                if event.shift:
-                    bpy.ops.ed.redo()
-                else:
-                    bpy.ops.ed.undo()
-
-            except RuntimeError:
-                return {'RUNNING_MODAL'}
-
-            self.placed_collection = utils.get_placed_collection(
-                context
-            )
-
-            self.source_collection = utils.get_source_collection(
-                context
-            )
-
-            preview.clear_cache()
-
-            return {'RUNNING_MODAL'}
+            return {'PASS_THROUGH'}
 
         if event.type == 'MOUSEMOVE':
 
